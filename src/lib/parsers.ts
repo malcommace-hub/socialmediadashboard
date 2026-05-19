@@ -72,8 +72,17 @@ export function parseInstagramCSV(text: string): RawInstagramRow[] {
   }).filter(r => r.permalink || r.description) // at least one identifier
 }
 
-// ─── LinkedIn XLS (LinkedIn Analytics → Content) ─
-// Headers: Post title, Post link, Created date, Impressions, Clicks, Reactions, Comments, Shares, Engagement rate
+// ─── LinkedIn XLS (LinkedIn Analytics → Exportar) ─────────────────────────
+// Real structure from weareseeders export:
+//   Sheet: "Todas las publicaciones"
+//   Row 1: long description string (skip)
+//   Row 2: actual column headers in Spanish
+//   Row 3+: post data
+//
+// Relevant columns (Spanish):
+//   "Título de la publicación", "Enlace de la publicación", "Fecha de creación",
+//   "Impresiones", "Clics", "Recomendaciones", "Comentarios", "Veces compartido",
+//   "Tasa de interacción"
 export interface RawLinkedInRow {
   title: string
   permalink: string | null
@@ -83,34 +92,70 @@ export interface RawLinkedInRow {
   er_decimal: number
 }
 
+function parseDateMMDDYYYY(raw: string): string | null {
+  // Converts "04/30/2026" → "2026-04-30"
+  const m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (!m) return raw.slice(0, 10) || null
+  return `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`
+}
+
 export function parseLinkedInXLS(buffer: ArrayBuffer): RawLinkedInRow[] {
   const wb = XLSX.read(buffer, { type: 'array' })
-  const ws = wb.Sheets[wb.SheetNames[0]]
-  const raw = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { raw: false })
 
-  return raw.map(row => {
-    // Normalize keys
-    const keys = Object.keys(row).reduce<Record<string, string>>((acc, k) => {
-      acc[k.toLowerCase().trim().replace(/\s+/g, '_')] = String(row[k] ?? '')
-      return acc
-    }, {})
+  // Use "Todas las publicaciones" sheet if present, otherwise first sheet
+  const sheetName = wb.SheetNames.includes('Todas las publicaciones')
+    ? 'Todas las publicaciones'
+    : wb.SheetNames[0]
+  const ws = wb.Sheets[sheetName]
 
-    const interactions =
-      (parseFloat(keys['reactions'] || '0') || 0) +
-      (parseFloat(keys['comments'] || '0') || 0) +
-      (parseFloat(keys['shares'] || '0') || 0) +
-      (parseFloat(keys['clicks'] || '0') || 0)
+  // sheet_to_json with header:1 gives raw arrays so we can handle the 2-row header
+  const rows = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, raw: false, defval: '' })
 
-    const erRaw = keys['engagement_rate'] || keys['er'] || '0'
-    // LinkedIn exports ER as decimal (0.0966) or percent (9.66%)
-    let er_decimal = parseFloat(erRaw.replace('%', '')) || 0
-    if (er_decimal > 1) er_decimal = er_decimal / 100 // was percent
+  // Row 0 = long description, Row 1 = actual column headers, Row 2+ = data
+  if (rows.length < 3) return []
+
+  const headers: string[] = rows[1].map(h => String(h).trim())
+
+  const idx = (names: string[]): number => {
+    for (const name of names) {
+      const i = headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase()))
+      if (i !== -1) return i
+    }
+    return -1
+  }
+
+  const iTitle       = idx(['título de la publicación', 'post title', 'title'])
+  const iPermalink   = idx(['enlace de la publicación', 'post link', 'url'])
+  const iDate        = idx(['fecha de creación', 'created date', 'fecha'])
+  const iImpressions = idx(['impresiones'])
+  const iClicks      = idx(['clics', 'clicks'])
+  const iReactions   = idx(['recomendaciones', 'reactions', 'reacciones'])
+  const iComments    = idx(['comentarios', 'comments'])
+  const iShares      = idx(['veces compartido', 'shares'])
+  const iER          = idx(['tasa de interacción', 'engagement rate', 'tasa de interaccion'])
+
+  const getNum = (row: string[], i: number): number =>
+    i >= 0 ? parseFloat(row[i]?.replace(',', '.') || '0') || 0 : 0
+
+  return rows.slice(2).map(row => {
+    const impressions  = getNum(row, iImpressions)
+    const clicks       = getNum(row, iClicks)
+    const reactions    = getNum(row, iReactions)
+    const comments     = getNum(row, iComments)
+    const shares       = getNum(row, iShares)
+    const interactions = clicks + reactions + comments + shares
+
+    let er_decimal = getNum(row, iER)
+    if (er_decimal > 1) er_decimal = er_decimal / 100
+
+    const rawDate = iDate >= 0 ? (row[iDate] || '') : ''
+    const post_date = parseDateMMDDYYYY(rawDate)
 
     return {
-      title: keys['post_title'] || keys['title'] || keys['content'] || '',
-      permalink: keys['post_link'] || keys['url'] || keys['permalink'] || null,
-      post_date: keys['created_date'] || keys['date'] || null,
-      impressions: parseFloat(keys['impressions'] || '0') || 0,
+      title:      iTitle >= 0 ? (row[iTitle] || '') : '',
+      permalink:  iPermalink >= 0 ? (row[iPermalink] || null) : null,
+      post_date,
+      impressions,
       interactions,
       er_decimal,
     }
