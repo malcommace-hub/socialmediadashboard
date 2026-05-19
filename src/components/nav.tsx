@@ -12,6 +12,8 @@ import {
   Mail,
   Target,
   Upload,
+  Star,
+  Sparkles,
 } from 'lucide-react'
 
 const links = [
@@ -23,6 +25,8 @@ const links = [
   { href: '/dashboard/newsletter', label: 'Newsletter', icon: Mail },
   { href: '/dashboard/web', label: 'Web', icon: Globe },
   { href: '/dashboard/objectives', label: 'Objetivos Q', icon: Target },
+  { href: '/dashboard/highlights', label: 'Destacados', icon: Star },
+  { href: '/dashboard/insights', label: 'Insights', icon: Sparkles },
   { href: '/dashboard/upload', label: 'Cargar datos', icon: Upload },
 ]
 

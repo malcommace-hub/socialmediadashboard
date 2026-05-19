@@ -1,16 +1,34 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
-import { StatCard } from '@/components/ui/stat-card'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { MonthSelector } from '@/components/ui/month-selector'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
-  getInstagramStats, deleteInstagramPost,
+  getInstagramStats, getInstagramHistory, deleteInstagramPost,
   upsertInstagramMonthly, addInstagramPostManual,
 } from '@/lib/queries'
-import { formatNumber, formatPercent, currentYearMonth, monthLabel } from '@/lib/utils'
+import { formatNumber, formatPercent, currentYearMonth, monthLabel, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
 import type { InstagramStats, InstagramPost } from '@/lib/types'
-import { Trash2, ExternalLink, Plus, ChevronUp, ChevronDown, PencilLine } from 'lucide-react'
+import { Trash2, ExternalLink, Plus, ChevronUp, ChevronDown, PencilLine, Upload } from 'lucide-react'
+import {
+  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, LabelList, AreaChart, Area,
+} from 'recharts'
+import Link from 'next/link'
+
+type HistoryPoint = Awaited<ReturnType<typeof getInstagramHistory>>[0]
+
+function TrendBadge({ value, prev }: { value: number; prev: number | undefined }) {
+  if (!prev) return <span className="text-gray-400 text-xs">—</span>
+  const pct = pctChange(value, prev)
+  if (pct === null) return <span className="text-gray-400 text-xs">—</span>
+  const pos = pct >= 0
+  return (
+    <span className={`text-xs font-semibold ${pos ? 'text-emerald-600' : 'text-red-500'}`}>
+      {pos ? '+' : ''}{pct.toFixed(1)}%
+    </span>
+  )
+}
 
 type SortKey = 'views' | 'likes' | 'er'
 type SortDir = 'asc' | 'desc'
@@ -32,6 +50,7 @@ export default function InstagramPage() {
   const [year, setYear] = useState(cy)
   const [month, setMonth] = useState(cm)
   const [stats, setStats] = useState<InstagramStats | null>(null)
+  const [history, setHistory] = useState<HistoryPoint[]>([])
   const [loading, setLoading] = useState(true)
   const [sortKey, setSortKey] = useState<SortKey>('views')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
@@ -56,8 +75,12 @@ export default function InstagramPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const data = await getInstagramStats({ year, month })
+    const [data, hist] = await Promise.all([
+      getInstagramStats({ year, month }),
+      getInstagramHistory(),
+    ])
     setStats(data)
+    setHistory(hist)
     setFollowers(String(data.monthly?.total_followers ?? ''))
     setNewFollowers(String(data.monthly?.new_followers ?? ''))
     setViewsApp(String(data.monthly?.total_views_manual ?? ''))
@@ -151,12 +174,49 @@ export default function InstagramPage() {
   const collabViewsSum = stats?.externalCollabViews ?? 0
   const appViews = stats?.monthly?.total_views_manual ?? 0
 
+  const histLast = history.slice(-12)
+  const curH = history.find(d => d.year === year && d.month === month)
+  const prevH = (() => {
+    const pm = month === 1 ? { y: year - 1, m: 12 } : { y: year, m: month - 1 }
+    return history.find(d => d.year === pm.y && d.month === pm.m)
+  })()
+  const qPrevH = (() => {
+    let m = month - 3, y = year
+    if (m <= 0) { m += 12; y-- }
+    return history.find(d => d.year === y && d.month === m)
+  })()
+
+  const viewsChart = useMemo(() => {
+    const vals = histLast.map(d => d.views)
+    const ma = movingAvg(vals, 3)
+    return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: d.views, ma: ma[i] }))
+  }, [histLast])
+  const intChart = useMemo(() => {
+    const vals = histLast.map(d => d.interactions)
+    const ma = movingAvg(vals, 3)
+    return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: d.interactions, ma: ma[i] }))
+  }, [histLast])
+  const follChart = useMemo(() => {
+    const vals = histLast.map(d => d.newFollowers)
+    const ma = movingAvg(vals, 3)
+    return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: d.newFollowers, ma: ma[i] }))
+  }, [histLast])
+  const erChart = useMemo(() => {
+    const vals = histLast.map(d => d.er)
+    const ma = movingAvg(vals, 3)
+    return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: +d.er.toFixed(2), ma: ma[i] ? +ma[i]!.toFixed(2) : null }))
+  }, [histLast])
+
+  const chartCardCls = 'bg-white rounded-2xl border border-gray-100 p-4 shadow-sm'
+
   return (
     <div className="p-8 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Instagram</h1>
-          <p className="text-gray-500 text-sm mt-0.5">{monthLabel(year, month)} · @weareseeds_</p>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Instagram — @weareseeds_</h1>
+            <p className="text-gray-500 text-sm mt-0.5">{monthLabel(year, month)} · {formatNumber(stats?.monthly?.total_followers ?? 0)} followers</p>
+          </div>
         </div>
         <MonthSelector year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m) }} />
       </div>
@@ -165,19 +225,64 @@ export default function InstagramPage() {
         <div className="flex items-center justify-center h-64 text-gray-400">Cargando datos...</div>
       ) : (
         <>
-          {/* KPIs */}
+          {/* KPI trend cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <StatCard
-              label="Views totales del mes"
-              value={formatNumber(grandTotal)}
-              sub={collabViewsSum > 0
-                ? `App: ${formatNumber(appViews)} + Collabs ext.: ${formatNumber(collabViewsSum)}`
-                : 'Cargá el número desde la app de Meta'}
-            />
-            <StatCard label="Accounts reached" value={formatNumber(stats?.monthly?.total_reach_manual ?? 0)} />
-            <StatCard label="Interacciones" value={formatNumber(stats?.totalInteractions ?? 0)} />
-            <StatCard label="ER% promedio" value={formatPercent(stats?.avgER ?? 0)} />
+            {[
+              { label: 'Views / Impr.', val: grandTotal, prev: prevH?.views, qPrev: qPrevH?.views, fmt: formatNumber,
+                sub: collabViewsSum > 0 ? `App ${formatNumber(appViews)} + Collabs ${formatNumber(collabViewsSum)}` : undefined },
+              { label: 'Interacciones', val: stats?.totalInteractions ?? 0, prev: prevH?.interactions, qPrev: qPrevH?.interactions, fmt: formatNumber },
+              { label: 'Engagement %', val: stats?.avgER ?? 0, prev: prevH?.er, qPrev: qPrevH?.er, fmt: (v: number) => formatPercent(v) },
+              { label: 'Nuevos seguidores', val: stats?.monthly?.new_followers ?? 0, prev: prevH?.newFollowers, qPrev: qPrevH?.newFollowers, fmt: (v: number) => `+${formatNumber(v)}` },
+            ].map(({ label, val, prev, qPrev, fmt, sub }) => (
+              <div key={label} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+                <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">{label}</div>
+                <div className="text-2xl font-bold text-gray-900">{fmt(val)}</div>
+                {sub && <div className="text-xs text-gray-400 mt-0.5">{sub}</div>}
+                <div className="flex gap-3 mt-1 flex-wrap">
+                  <span className="text-xs text-gray-400">
+                    <TrendBadge value={val} prev={prev} />
+                    <span className="ml-1">vs mes ant.</span>
+                  </span>
+                  <span className="text-xs text-gray-400">
+                    <TrendBadge value={val} prev={qPrev} />
+                    <span className="ml-1">vs Q ant.</span>
+                  </span>
+                </div>
+              </div>
+            ))}
           </div>
+
+          {/* Historical charts */}
+          {histLast.length > 1 && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+              {[
+                { title: 'Impresiones / Views', data: viewsChart, color: '#f43f5e', gradId: 'igViewsGrad' },
+                { title: 'Nuevos seguidores', data: follChart, color: '#fb923c', gradId: 'igFollGrad' },
+                { title: 'Interacciones', data: intChart, color: '#f43f5e', gradId: 'igIntGrad' },
+                { title: 'Engagement %', data: erChart, color: '#e11d48', gradId: 'igErGrad', isPercent: true },
+              ].map(({ title, data, color, gradId, isPercent }) => (
+                <div key={title} className={chartCardCls}>
+                  <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">{title}</div>
+                  <ResponsiveContainer width="100%" height={180}>
+                    <AreaChart data={data} margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor={color} stopOpacity={0.15} />
+                          <stop offset="95%" stopColor={color} stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                      <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => isPercent ? `${v}%` : formatNumber(Number(v))} axisLine={false} tickLine={false} width={isPercent ? 32 : 44} />
+                      <Tooltip formatter={(v, n) => [isPercent ? `${Number(v).toFixed(2)}%` : formatNumber(Number(v)), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                      <Area type="monotone" dataKey="value" name={title} stroke={color} fill={`url(#${gradId})`} strokeWidth={2} dot={{ r: 3, fill: color, strokeWidth: 0 }} />
+                      <Line type="monotone" dataKey="ma" name="Media 3m" stroke={color} strokeDasharray="5 3" dot={false} strokeWidth={1.5} connectNulls strokeOpacity={0.6} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Monthly manual data card */}
           <Card className="mb-6">
@@ -369,7 +474,7 @@ export default function InstagramPage() {
           <Card>
             <div className="flex items-center justify-between mb-4">
               <CardTitle>Contenido propio del mes ({regularPosts.length} posts)</CardTitle>
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <div className="flex gap-1">
                   {['all', 'Reel', 'Post', 'Collab', 'Story'].map(t => (
                     <button key={t} onClick={() => setFilterType(t)}
@@ -386,6 +491,10 @@ export default function InstagramPage() {
                     <Trash2 size={13} /> Eliminar {selected.size}
                   </button>
                 )}
+                <Link href="/dashboard/upload"
+                  className="flex items-center gap-1 text-xs bg-rose-500 text-white px-3 py-1 rounded-lg font-medium hover:bg-rose-400">
+                  <Upload size={13} /> Subir CSV
+                </Link>
                 <button onClick={() => setShowAddForm(!showAddForm)}
                   className="flex items-center gap-1 text-xs bg-emerald-500 text-white px-3 py-1 rounded-lg font-medium hover:bg-emerald-400">
                   <Plus size={13} /> Agregar manual

@@ -207,6 +207,139 @@ export async function upsertObjective(data: { year: number; quarter: number; cha
   return supabase.from('objectives').upsert(data, { onConflict: 'year,quarter,channel,metric' }).select().single()
 }
 
+// ─── Bulk historical data ─────────────────────
+
+export async function getOverviewHistory() {
+  const [igMonthly, liMonthly, liPosts, ttMonthly, ytMonthly, igPosts, nlEpisodes] = await Promise.all([
+    supabase.from('instagram_monthly').select('year,month,total_views_manual,total_reach_manual,new_followers,total_followers').order('year').order('month'),
+    supabase.from('linkedin_monthly').select('year,month,new_followers,total_followers').order('year').order('month'),
+    supabase.from('linkedin_posts').select('year,month,impressions,interactions,er_decimal'),
+    supabase.from('tiktok_monthly').select('year,month,total_views,total_interactions,new_followers,total_followers').order('year').order('month'),
+    supabase.from('youtube_monthly').select('year,month,shorts_views').order('year').order('month'),
+    supabase.from('instagram_posts').select('year,month,views,impressions,likes,comments,shares,saves'),
+    supabase.from('newsletter_episodes').select('year,month,views'),
+  ])
+
+  const liByMonth: Record<string, { impressions: number; interactions: number; erSum: number; count: number }> = {}
+  for (const p of liPosts.data ?? []) {
+    const k = `${p.year}-${p.month}`
+    if (!liByMonth[k]) liByMonth[k] = { impressions: 0, interactions: 0, erSum: 0, count: 0 }
+    liByMonth[k].impressions += p.impressions ?? 0
+    liByMonth[k].interactions += p.interactions ?? 0
+    liByMonth[k].erSum += p.er_decimal ?? 0
+    liByMonth[k].count++
+  }
+  const igByMonth: Record<string, { interactions: number; impressions: number }> = {}
+  for (const p of igPosts.data ?? []) {
+    const k = `${p.year}-${p.month}`
+    if (!igByMonth[k]) igByMonth[k] = { interactions: 0, impressions: 0 }
+    igByMonth[k].impressions += p.impressions ?? p.views ?? 0
+    igByMonth[k].interactions += (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0) + (p.saves ?? 0)
+  }
+  const nlByMonth: Record<string, number> = {}
+  for (const ep of nlEpisodes.data ?? []) {
+    const k = `${ep.year}-${ep.month}`
+    nlByMonth[k] = (nlByMonth[k] ?? 0) + (ep.views ?? 0)
+  }
+
+  const monthSet = new Set<string>()
+  ;[igMonthly, liMonthly, ttMonthly, ytMonthly].forEach(r => (r.data ?? []).forEach((d: {year:number;month:number}) => monthSet.add(`${d.year}-${d.month}`)))
+
+  return Array.from(monthSet).sort().map(key => {
+    const [yr, mo] = key.split('-').map(Number)
+    const ig = (igMonthly.data ?? []).find((d: {year:number;month:number}) => d.year === yr && d.month === mo)
+    const li = (liMonthly.data ?? []).find((d: {year:number;month:number}) => d.year === yr && d.month === mo)
+    const tt = (ttMonthly.data ?? []).find((d: {year:number;month:number}) => d.year === yr && d.month === mo)
+    const yt = (ytMonthly.data ?? []).find((d: {year:number;month:number}) => d.year === yr && d.month === mo)
+    const liM = liByMonth[key] ?? { impressions: 0, interactions: 0, erSum: 0, count: 0 }
+    const igM = igByMonth[key] ?? { interactions: 0, impressions: 0 }
+    return {
+      year: yr, month: mo,
+      igImpressions: ig?.total_views_manual ?? 0,
+      igInteractions: igM.interactions,
+      igNewFollowers: ig?.new_followers ?? 0,
+      igTotalFollowers: ig?.total_followers ?? 0,
+      igER: igM.impressions > 0 ? (igM.interactions / igM.impressions) * 100 : 0,
+      liImpressions: liM.impressions,
+      liInteractions: liM.interactions,
+      liNewFollowers: li?.new_followers ?? 0,
+      liTotalFollowers: li?.total_followers ?? 0,
+      liER: liM.count > 0 ? (liM.erSum / liM.count) * 100 : 0,
+      ttViews: tt?.total_views ?? 0,
+      ttInteractions: tt?.total_interactions ?? 0,
+      ttNewFollowers: tt?.new_followers ?? 0,
+      ttTotalFollowers: tt?.total_followers ?? 0,
+      ytViews: yt?.shorts_views ?? 0,
+      newsletterViews: nlByMonth[key] ?? 0,
+    }
+  })
+}
+
+export async function getInstagramHistory() {
+  const [monthly, posts] = await Promise.all([
+    supabase.from('instagram_monthly').select('*').order('year').order('month'),
+    supabase.from('instagram_posts').select('year,month,views,impressions,likes,comments,shares,saves'),
+  ])
+  const byMonth: Record<string, { interactions: number; impressions: number; count: number }> = {}
+  for (const p of posts.data ?? []) {
+    const k = `${p.year}-${p.month}`
+    if (!byMonth[k]) byMonth[k] = { interactions: 0, impressions: 0, count: 0 }
+    byMonth[k].impressions += p.impressions ?? p.views ?? 0
+    byMonth[k].interactions += (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0) + (p.saves ?? 0)
+    byMonth[k].count++
+  }
+  return (monthly.data ?? []).map((m: Record<string, number>) => {
+    const pm = byMonth[`${m.year}-${m.month}`] ?? { interactions: 0, impressions: 0, count: 0 }
+    return {
+      year: m.year, month: m.month,
+      views: m.total_views_manual ?? 0,
+      reach: m.total_reach_manual ?? 0,
+      newFollowers: m.new_followers ?? 0,
+      totalFollowers: m.total_followers ?? 0,
+      interactions: pm.interactions,
+      er: pm.impressions > 0 ? (pm.interactions / pm.impressions) * 100 : 0,
+    }
+  }).sort((a: {year:number;month:number}, b: {year:number;month:number}) => a.year - b.year || a.month - b.month)
+}
+
+export async function getLinkedInHistory() {
+  const [monthly, posts] = await Promise.all([
+    supabase.from('linkedin_monthly').select('*').order('year').order('month'),
+    supabase.from('linkedin_posts').select('year,month,impressions,interactions,er_decimal'),
+  ])
+  const byMonth: Record<string, { impressions: number; interactions: number; erSum: number; count: number }> = {}
+  for (const p of posts.data ?? []) {
+    const k = `${p.year}-${p.month}`
+    if (!byMonth[k]) byMonth[k] = { impressions: 0, interactions: 0, erSum: 0, count: 0 }
+    byMonth[k].impressions += p.impressions ?? 0
+    byMonth[k].interactions += p.interactions ?? 0
+    byMonth[k].erSum += p.er_decimal ?? 0
+    byMonth[k].count++
+  }
+  return (monthly.data ?? []).map((m: Record<string, number>) => {
+    const pm = byMonth[`${m.year}-${m.month}`] ?? { impressions: 0, interactions: 0, erSum: 0, count: 0 }
+    return {
+      year: m.year, month: m.month,
+      impressions: pm.impressions,
+      interactions: pm.interactions,
+      newFollowers: m.new_followers ?? 0,
+      totalFollowers: m.total_followers ?? 0,
+      er: pm.count > 0 ? (pm.erSum / pm.count) * 100 : 0,
+    }
+  }).sort((a: {year:number;month:number}, b: {year:number;month:number}) => a.year - b.year || a.month - b.month)
+}
+
+export async function getTikTokHistory() {
+  const monthly = await supabase.from('tiktok_monthly').select('*').order('year').order('month')
+  return (monthly.data ?? []).map((m: Record<string, number>) => ({
+    year: m.year, month: m.month,
+    views: m.total_views ?? 0,
+    interactions: m.total_interactions ?? 0,
+    newFollowers: m.new_followers ?? 0,
+    totalFollowers: m.total_followers ?? 0,
+  })).sort((a: {year:number;month:number}, b: {year:number;month:number}) => a.year - b.year || a.month - b.month)
+}
+
 // ─── Historical months list ───────────────────
 
 export async function getAvailableMonths() {

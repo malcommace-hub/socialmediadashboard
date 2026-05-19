@@ -33,6 +33,25 @@ export function getQuarter(month: number): number {
   return Math.ceil(month / 3)
 }
 
+const SHORT_MONTHS = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+
+export function shortMonthLabel(year: number, month: number): string {
+  return `${SHORT_MONTHS[month - 1]} ${year}`
+}
+
+export function movingAvg(values: number[], window: number): (number | null)[] {
+  return values.map((_, i) => {
+    if (i < window - 1) return null
+    const slice = values.slice(i - window + 1, i + 1)
+    return slice.reduce((a, b) => a + b, 0) / window
+  })
+}
+
+export function pctChange(current: number, prev: number): number | null {
+  if (!prev) return null
+  return ((current - prev) / prev) * 100
+}
+
 // Computes ER from a list of posts where each has impressions and interactions.
 // Uses average of individual ER values (not aggregate), matching LinkedIn's methodology.
 export function computeAvgER(posts: { impressions: number; interactions: number }[]): number {
