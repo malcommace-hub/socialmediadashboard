@@ -107,7 +107,7 @@ function parseDateMMDDYYYY(raw: string): string | null {
 }
 
 export function parseLinkedInXLS(buffer: ArrayBuffer): RawLinkedInRow[] {
-  const wb = XLSX.read(buffer, { type: 'array' })
+  const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' })
 
   const sheetName = wb.SheetNames.includes('Todas las publicaciones')
     ? 'Todas las publicaciones'
@@ -117,38 +117,44 @@ export function parseLinkedInXLS(buffer: ArrayBuffer): RawLinkedInRow[] {
   const rows = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, raw: false, defval: '' })
   if (rows.length < 2) return []
 
-  // Detect header row dynamically — look for any row containing impression/engagement keywords
-  // This handles LinkedIn changing their export format without breaking the parser
-  const HEADER_SIGNALS = ['impresiones', 'impressions', 'tasa de interacción', 'engagement rate', 'enlace de la publicación', 'post link']
+  // Detect header row without relying on accented characters (encoding-safe).
+  // Header rows have many short non-empty cells; description rows have one very long cell.
   let headerRowIdx = -1
   for (let i = 0; i < Math.min(rows.length, 6); i++) {
-    const rowText = rows[i].join(' ').toLowerCase()
-    if (HEADER_SIGNALS.some(s => rowText.includes(s))) {
+    const row = rows[i]
+    const nonEmpty = row.filter(c => String(c).trim().length > 0).length
+    const firstCellLen = String(row[0] ?? '').trim().length
+    if (nonEmpty >= 5 && firstCellLen < 120) {
       headerRowIdx = i
       break
     }
   }
   if (headerRowIdx === -1 || headerRowIdx >= rows.length - 1) return []
 
-  const headers: string[] = rows[headerRowIdx].map(h => String(h).trim())
+  // Normalize headers: lowercase + strip accents so matching is encoding-agnostic
+  const normalize = (s: string) =>
+    String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
+
+  const headers = rows[headerRowIdx].map(normalize)
 
   const idx = (names: string[]): number => {
     for (const name of names) {
-      const i = headers.findIndex(h => h.toLowerCase().includes(name.toLowerCase()))
+      const n = normalize(name)
+      const i = headers.findIndex(h => h.includes(n))
       if (i !== -1) return i
     }
     return -1
   }
 
-  const iTitle       = idx(['título de la publicación', 'post title', 'title'])
-  const iPermalink   = idx(['enlace de la publicación', 'post link', 'url'])
-  const iDate        = idx(['fecha de creación', 'created date', 'fecha'])
+  const iTitle       = idx(['titulo de la publicacion', 'post title', 'title'])
+  const iPermalink   = idx(['enlace de la publicacion', 'post link', 'url'])
+  const iDate        = idx(['fecha de creacion', 'created date', 'fecha'])
   const iImpressions = idx(['impresiones', 'impressions'])
   const iClicks      = idx(['clics', 'clicks'])
   const iReactions   = idx(['recomendaciones', 'reactions', 'reacciones'])
   const iComments    = idx(['comentarios', 'comments'])
   const iShares      = idx(['veces compartido', 'shares'])
-  const iER          = idx(['tasa de interacción', 'engagement rate', 'tasa de interaccion'])
+  const iER          = idx(['tasa de interaccion', 'engagement rate'])
 
   const getNum = (row: string[], i: number): number =>
     i >= 0 ? parseFloat(String(row[i] ?? '').replace(',', '.')) || 0 : 0
