@@ -109,19 +109,28 @@ function parseDateMMDDYYYY(raw: string): string | null {
 export function parseLinkedInXLS(buffer: ArrayBuffer): RawLinkedInRow[] {
   const wb = XLSX.read(buffer, { type: 'array' })
 
-  // Use "Todas las publicaciones" sheet if present, otherwise first sheet
   const sheetName = wb.SheetNames.includes('Todas las publicaciones')
     ? 'Todas las publicaciones'
     : wb.SheetNames[0]
   const ws = wb.Sheets[sheetName]
 
-  // sheet_to_json with header:1 gives raw arrays so we can handle the 2-row header
   const rows = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, raw: false, defval: '' })
+  if (rows.length < 2) return []
 
-  // Row 0 = long description, Row 1 = actual column headers, Row 2+ = data
-  if (rows.length < 3) return []
+  // Detect header row dynamically — look for any row containing impression/engagement keywords
+  // This handles LinkedIn changing their export format without breaking the parser
+  const HEADER_SIGNALS = ['impresiones', 'impressions', 'tasa de interacción', 'engagement rate', 'enlace de la publicación', 'post link']
+  let headerRowIdx = -1
+  for (let i = 0; i < Math.min(rows.length, 6); i++) {
+    const rowText = rows[i].join(' ').toLowerCase()
+    if (HEADER_SIGNALS.some(s => rowText.includes(s))) {
+      headerRowIdx = i
+      break
+    }
+  }
+  if (headerRowIdx === -1 || headerRowIdx >= rows.length - 1) return []
 
-  const headers: string[] = rows[1].map(h => String(h).trim())
+  const headers: string[] = rows[headerRowIdx].map(h => String(h).trim())
 
   const idx = (names: string[]): number => {
     for (const name of names) {
@@ -134,7 +143,7 @@ export function parseLinkedInXLS(buffer: ArrayBuffer): RawLinkedInRow[] {
   const iTitle       = idx(['título de la publicación', 'post title', 'title'])
   const iPermalink   = idx(['enlace de la publicación', 'post link', 'url'])
   const iDate        = idx(['fecha de creación', 'created date', 'fecha'])
-  const iImpressions = idx(['impresiones'])
+  const iImpressions = idx(['impresiones', 'impressions'])
   const iClicks      = idx(['clics', 'clicks'])
   const iReactions   = idx(['recomendaciones', 'reactions', 'reacciones'])
   const iComments    = idx(['comentarios', 'comments'])
@@ -142,9 +151,9 @@ export function parseLinkedInXLS(buffer: ArrayBuffer): RawLinkedInRow[] {
   const iER          = idx(['tasa de interacción', 'engagement rate', 'tasa de interaccion'])
 
   const getNum = (row: string[], i: number): number =>
-    i >= 0 ? parseFloat(row[i]?.replace(',', '.') || '0') || 0 : 0
+    i >= 0 ? parseFloat(String(row[i] ?? '').replace(',', '.')) || 0 : 0
 
-  return rows.slice(2).map(row => {
+  return rows.slice(headerRowIdx + 1).map(row => {
     const impressions  = getNum(row, iImpressions)
     const clicks       = getNum(row, iClicks)
     const reactions    = getNum(row, iReactions)
@@ -155,18 +164,14 @@ export function parseLinkedInXLS(buffer: ArrayBuffer): RawLinkedInRow[] {
     let er_decimal = getNum(row, iER)
     if (er_decimal > 1) er_decimal = er_decimal / 100
 
-    const rawDate = iDate >= 0 ? (row[iDate] || '') : ''
+    const rawDate = iDate >= 0 ? String(row[iDate] ?? '') : ''
     const post_date = parseDateMMDDYYYY(rawDate)
 
-    return {
-      title:      iTitle >= 0 ? (row[iTitle] || '') : '',
-      permalink:  iPermalink >= 0 ? (row[iPermalink] || null) : null,
-      post_date,
-      impressions,
-      interactions,
-      er_decimal,
-    }
-  }).filter(r => r.impressions > 0 || r.title)
+    const title = iTitle >= 0 ? String(row[iTitle] ?? '').trim() : ''
+    const permalink = iPermalink >= 0 ? String(row[iPermalink] ?? '').trim() || null : null
+
+    return { title, permalink, post_date, impressions, interactions, er_decimal }
+  }).filter(r => r.title || r.impressions > 0 || r.permalink)
 }
 
 // ─── TikTok CSV (TikTok Studio) ──────────────
