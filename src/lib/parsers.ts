@@ -106,6 +106,72 @@ function parseDateMMDDYYYY(raw: string): string | null {
   return `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`
 }
 
+// Shared normalize: lowercase + strip combining diacritics
+const normalizeStr = (s: string) =>
+  String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
+
+export function parseLinkedInCSV(text: string): RawLinkedInRow[] {
+  const result = Papa.parse<string[]>(text, {
+    header: false,
+    skipEmptyLines: true,
+  })
+  const allRows = result.data
+  if (allRows.length < 2) return []
+
+  // Find header row: first row where joined+normalized text contains known keywords
+  const KEYWORDS = ['impresion', 'impression', 'publicacion', 'publication', 'titulo', 'title', 'enlace', 'link']
+  let headerIdx = -1
+  for (let i = 0; i < Math.min(allRows.length, 6); i++) {
+    const row = allRows[i]
+    const nonEmpty = row.filter(c => String(c).trim().length > 0).length
+    if (nonEmpty < 3) continue
+    const joined = normalizeStr(row.join(' '))
+    if (KEYWORDS.some(kw => joined.includes(kw))) { headerIdx = i; break }
+  }
+  if (headerIdx === -1 || headerIdx >= allRows.length - 1) return []
+
+  const headers = allRows[headerIdx].map(normalizeStr)
+  const idx = (names: string[]) => {
+    for (const name of names) {
+      const n = normalizeStr(name)
+      const i = headers.findIndex(h => h.includes(n))
+      if (i !== -1) return i
+    }
+    return -1
+  }
+
+  const iTitle       = idx(['titulo de la publicacion', 'post title', 'title'])
+  const iPermalink   = idx(['enlace de la publicacion', 'post link', 'url'])
+  const iDate        = idx(['fecha de creacion', 'created date', 'fecha'])
+  const iImpressions = idx(['impresiones', 'impressions'])
+  const iClicks      = idx(['clics', 'clicks'])
+  const iReactions   = idx(['recomendaciones', 'reactions', 'reacciones'])
+  const iComments    = idx(['comentarios', 'comments'])
+  const iShares      = idx(['veces compartido', 'shares'])
+  const iER          = idx(['tasa de interaccion', 'engagement rate'])
+
+  const getNum = (row: string[], i: number) =>
+    i >= 0 ? parseFloat(String(row[i] ?? '').replace(',', '.')) || 0 : 0
+
+  return allRows.slice(headerIdx + 1).map(row => {
+    const impressions  = getNum(row, iImpressions)
+    const clicks       = getNum(row, iClicks)
+    const reactions    = getNum(row, iReactions)
+    const comments     = getNum(row, iComments)
+    const shares       = getNum(row, iShares)
+    const interactions = clicks + reactions + comments + shares
+
+    let er_decimal = getNum(row, iER)
+    if (er_decimal > 1) er_decimal = er_decimal / 100
+
+    const rawDate = iDate >= 0 ? String(row[iDate] ?? '') : ''
+    const title = iTitle >= 0 ? String(row[iTitle] ?? '').trim() : ''
+    const permalink = iPermalink >= 0 ? String(row[iPermalink] ?? '').trim() || null : null
+
+    return { title, permalink, post_date: parseDateMMDDYYYY(rawDate), impressions, interactions, er_decimal }
+  }).filter(r => r.title || r.impressions > 0 || r.permalink)
+}
+
 export interface LinkedInDebugInfo {
   sheetNames: string[]
   usedSheet: string

@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { MonthSelector } from '@/components/ui/month-selector'
-import { parseInstagramCSV, parseLinkedInXLS, parseLinkedInXLSWithDebug, parseTikTokCSV, type LinkedInDebugInfo } from '@/lib/parsers'
+import { parseInstagramCSV, parseLinkedInCSV, parseLinkedInXLS, parseLinkedInXLSWithDebug, parseTikTokCSV, type LinkedInDebugInfo } from '@/lib/parsers'
 import { upsertInstagramPosts, upsertLinkedInPosts, upsertTikTokVideos } from '@/lib/queries'
 import { currentYearMonth, monthLabel } from '@/lib/utils'
 import { Upload, CheckCircle, AlertCircle, Camera, Briefcase, Music2 } from 'lucide-react'
@@ -76,18 +76,23 @@ export default function UploadPage() {
     if (!file) return
     setLi({ ...emptyState, status: 'parsing' })
     try {
-      // FileReader + readAsBinaryString is the most reliable cross-browser method
-      // for SheetJS (vs file.arrayBuffer() + Uint8Array which can silently fail)
-      const binaryString = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onload = (ev) => resolve(ev.target!.result as string)
-        reader.onerror = () => reject(new Error('Error leyendo el archivo'))
-        reader.readAsBinaryString(file)
-      })
-      const { rows, debug } = parseLinkedInXLSWithDebug(binaryString)
-      setLi({ status: 'preview', rowCount: rows.length, preview: rows, debug })
+      const isCSV = file.name.toLowerCase().endsWith('.csv')
+      if (isCSV) {
+        const text = await file.text()
+        const rows = parseLinkedInCSV(text)
+        setLi({ status: 'preview', rowCount: rows.length, preview: rows })
+      } else {
+        const binaryString = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = (ev) => resolve(ev.target!.result as string)
+          reader.onerror = () => reject(new Error('Error leyendo el archivo'))
+          reader.readAsBinaryString(file)
+        })
+        const { rows, debug } = parseLinkedInXLSWithDebug(binaryString)
+        setLi({ status: 'preview', rowCount: rows.length, preview: rows, debug })
+      }
     } catch (err) {
-      setLi({ ...emptyState, status: 'error', error: `No se pudo parsear el XLS: ${String(err)}` })
+      setLi({ ...emptyState, status: 'error', error: `No se pudo parsear el archivo: ${String(err)}` })
     }
     e.target.value = ''
   }
@@ -183,8 +188,8 @@ export default function UploadPage() {
         <UploadCard
           icon={<Briefcase size={18} />}
           title="LinkedIn"
-          subtitle="LinkedIn Analytics → Publicaciones → Exportar XLS"
-          accept=".xlsx,.xls"
+          subtitle="LinkedIn Analytics → Publicaciones → Exportar (CSV o XLS)"
+          accept=".xlsx,.xls,.csv"
           state={li}
           onFile={handleLinkedInFile}
           onConfirm={confirmLinkedIn}
