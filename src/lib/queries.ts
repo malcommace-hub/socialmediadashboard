@@ -253,6 +253,9 @@ export async function getOverviewHistory() {
     const yt = (ytMonthly.data ?? []).find((d: {year:number;month:number}) => d.year === yr && d.month === mo)
     const liM = liByMonth[key] ?? { impressions: 0, interactions: 0, erSum: 0, count: 0 }
     const igM = igByMonth[key] ?? { interactions: 0, impressions: 0 }
+    // Prefer stored monthly totals for LinkedIn when post-level data isn't available
+    const liImpressions = (li as Record<string, number>)?.total_impressions > 0 ? (li as Record<string, number>).total_impressions : liM.impressions
+    const liInteractions = (li as Record<string, number>)?.total_interactions > 0 ? (li as Record<string, number>).total_interactions : liM.interactions
     return {
       year: yr, month: mo,
       igImpressions: ig?.total_views_manual ?? 0,
@@ -260,8 +263,8 @@ export async function getOverviewHistory() {
       igNewFollowers: ig?.new_followers ?? 0,
       igTotalFollowers: ig?.total_followers ?? 0,
       igER: igM.impressions > 0 ? (igM.interactions / igM.impressions) * 100 : 0,
-      liImpressions: liM.impressions,
-      liInteractions: liM.interactions,
+      liImpressions,
+      liInteractions,
       liNewFollowers: li?.new_followers ?? 0,
       liTotalFollowers: li?.total_followers ?? 0,
       liER: liM.count > 0 ? (liM.erSum / liM.count) * 100 : 0,
@@ -318,15 +321,26 @@ export async function getLinkedInHistory() {
   }
   return (monthly.data ?? []).map((m: Record<string, number>) => {
     const pm = byMonth[`${m.year}-${m.month}`] ?? { impressions: 0, interactions: 0, erSum: 0, count: 0 }
+    // Prefer stored monthly totals (manual entry) over post-level sums
+    const impressions = m.total_impressions > 0 ? m.total_impressions : pm.impressions
+    const interactions = m.total_interactions > 0 ? m.total_interactions : pm.interactions
     return {
       year: m.year, month: m.month,
-      impressions: pm.impressions,
-      interactions: pm.interactions,
+      impressions,
+      interactions,
       newFollowers: m.new_followers ?? 0,
       totalFollowers: m.total_followers ?? 0,
       er: pm.count > 0 ? (pm.erSum / pm.count) * 100 : 0,
     }
   }).sort((a: {year:number;month:number}, b: {year:number;month:number}) => a.year - b.year || a.month - b.month)
+}
+
+export async function upsertLinkedInMonthlyTotals(data: {
+  year: number; month: number
+  total_followers?: number; new_followers?: number
+  total_impressions?: number; total_interactions?: number
+}) {
+  return supabase.from('linkedin_monthly').upsert(data, { onConflict: 'year,month' }).select().single()
 }
 
 export async function getTikTokHistory() {
