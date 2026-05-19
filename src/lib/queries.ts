@@ -354,6 +354,49 @@ export async function getTikTokHistory() {
   })).sort((a: {year:number;month:number}, b: {year:number;month:number}) => a.year - b.year || a.month - b.month)
 }
 
+export async function getNewsletterHistory() {
+  const [monthly, episodes] = await Promise.all([
+    supabase.from('newsletter_monthly').select('year,month,new_subscribers').order('year').order('month'),
+    supabase.from('newsletter_episodes').select('year,month,views'),
+  ])
+  const viewsByMonth: Record<string, number> = {}
+  for (const ep of episodes.data ?? []) {
+    const k = `${ep.year}-${ep.month}`
+    viewsByMonth[k] = (viewsByMonth[k] ?? 0) + (ep.views ?? 0)
+  }
+  return (monthly.data ?? []).map((m: Record<string, number>) => ({
+    year: m.year, month: m.month,
+    views: viewsByMonth[`${m.year}-${m.month}`] ?? 0,
+    newSubscribers: m.new_subscribers ?? 0,
+  })).sort((a: {year:number;month:number}, b: {year:number;month:number}) => a.year - b.year || a.month - b.month)
+}
+
+export async function getWebHistory() {
+  const [monthly, utm] = await Promise.all([
+    supabase.from('web_monthly').select('year,month,total_sessions').order('year').order('month'),
+    supabase.from('web_utm_sources').select('year,month,source,sessions'),
+  ])
+  const utmByMonth: Record<string, Record<string, number>> = {}
+  for (const u of utm.data ?? []) {
+    const k = `${u.year}-${u.month}`
+    if (!utmByMonth[k]) utmByMonth[k] = {}
+    utmByMonth[k][u.source as string] = u.sessions ?? 0
+  }
+  return (monthly.data ?? []).map((m: Record<string, number>) => {
+    const k = `${m.year}-${m.month}`
+    const src = utmByMonth[k] ?? {}
+    return {
+      year: m.year, month: m.month,
+      totalSessions: m.total_sessions ?? 0,
+      instagram: src['instagram'] ?? 0,
+      linkedin: src['linkedin'] ?? 0,
+      tiktok: src['tiktok'] ?? 0,
+      linktree: src['linktree'] ?? 0,
+      other: src['other'] ?? 0,
+    }
+  }).sort((a: {year:number;month:number}, b: {year:number;month:number}) => a.year - b.year || a.month - b.month)
+}
+
 // ─── Historical months list ───────────────────
 
 export async function getAvailableMonths() {

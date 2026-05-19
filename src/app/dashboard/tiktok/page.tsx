@@ -171,7 +171,7 @@ export default function TikTokPage() {
             ))}
           </div>
 
-          {histLast.length > 1 && (
+          {histLast.length >= 1 && (
             <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm mb-6">
               <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">TikTok — Impresiones</div>
               <ResponsiveContainer width="100%" height={200}>

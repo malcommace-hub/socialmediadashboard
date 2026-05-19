@@ -253,7 +253,7 @@ export default function InstagramPage() {
           </div>
 
           {/* Historical charts */}
-          {histLast.length > 1 && (
+          {histLast.length >= 1 && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
               {[
                 { title: 'Impresiones / Views', data: viewsChart, color: '#f43f5e', gradId: 'igViewsGrad' },

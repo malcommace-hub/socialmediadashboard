@@ -174,7 +174,7 @@ export default function LinkedInPage() {
           </div>
 
           {/* Historical charts */}
-          {histLast.length > 1 && (
+          {histLast.length >= 1 && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
               <div className={chartCardCls}>
                 <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Impresiones</div>
@@ -207,6 +207,7 @@ export default function LinkedInPage() {
                     <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => `${v}%`} axisLine={false} tickLine={false} width={36} />
                     <Tooltip formatter={(v, n) => [`${Number(v).toFixed(2)}%`, n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
                     <Area type="monotone" dataKey="value" name="ER%" stroke="#3b82f6" fill="url(#liErGrad)" strokeWidth={2} dot={{ r: 3, fill: '#3b82f6', strokeWidth: 0 }} />
+                    <Line type="monotone" dataKey="ma" name="Media 3m" stroke="#3b82f6" strokeDasharray="5 3" dot={false} strokeWidth={1.5} connectNulls strokeOpacity={0.6} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>

@@ -1,18 +1,36 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
-import { StatCard } from '@/components/ui/stat-card'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { MonthSelector } from '@/components/ui/month-selector'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
-import { getNewsletterData, upsertNewsletterMonthly, addNewsletterEpisode, deleteNewsletterEpisode } from '@/lib/queries'
-import { formatNumber, currentYearMonth, monthLabel } from '@/lib/utils'
+import { getNewsletterData, upsertNewsletterMonthly, addNewsletterEpisode, deleteNewsletterEpisode, getNewsletterHistory } from '@/lib/queries'
+import { formatNumber, currentYearMonth, monthLabel, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
 import type { NewsletterEpisode } from '@/lib/types'
 import { Trash2, Plus } from 'lucide-react'
+import {
+  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, LabelList,
+} from 'recharts'
+
+type HistoryPoint = Awaited<ReturnType<typeof getNewsletterHistory>>[0]
+
+function TrendBadge({ value, prev }: { value: number; prev: number | undefined }) {
+  if (!prev) return <span className="text-gray-400 text-xs">—</span>
+  const pct = pctChange(value, prev)
+  if (pct === null) return <span className="text-gray-400 text-xs">—</span>
+  const pos = pct >= 0
+  return (
+    <span className={`text-xs font-semibold ${pos ? 'text-emerald-600' : 'text-red-500'}`}>
+      {pos ? '+' : ''}{pct.toFixed(1)}%
+    </span>
+  )
+}
 
 export default function NewsletterPage() {
   const { year: cy, month: cm } = currentYearMonth()
   const [year, setYear] = useState(cy)
   const [month, setMonth] = useState(cm)
   const [episodes, setEpisodes] = useState<NewsletterEpisode[]>([])
+  const [history, setHistory] = useState<HistoryPoint[]>([])
   const [newSubs, setNewSubs] = useState('')
   const [savedNewSubs, setSavedNewSubs] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -22,8 +40,12 @@ export default function NewsletterPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const data = await getNewsletterData({ year, month })
+    const [data, hist] = await Promise.all([
+      getNewsletterData({ year, month }),
+      getNewsletterHistory(),
+    ])
     setEpisodes(data.episodes)
+    setHistory(hist)
     setNewSubs(String(data.monthly?.new_subscribers ?? ''))
     setSavedNewSubs(data.monthly?.new_subscribers ?? 0)
     setLoading(false)
@@ -63,9 +85,34 @@ export default function NewsletterPage() {
 
   const totalViews = episodes.reduce((a, e) => a + (e.views ?? 0), 0)
 
+  const histLast = history.slice(-12)
+  const prevH = (() => {
+    const pm = month === 1 ? { y: year - 1, m: 12 } : { y: year, m: month - 1 }
+    return history.find(d => d.year === pm.y && d.month === pm.m)
+  })()
+  const qPrevH = (() => {
+    let m = month - 3, y = year
+    if (m <= 0) { m += 12; y-- }
+    return history.find(d => d.year === y && d.month === m)
+  })()
+
+  const viewsChart = useMemo(() => {
+    const vals = histLast.map(d => d.views)
+    const ma = movingAvg(vals, 3)
+    return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: d.views, ma: ma[i] }))
+  }, [histLast])
+
+  const subsChart = useMemo(() => {
+    const vals = histLast.map(d => d.newSubscribers)
+    const ma = movingAvg(vals, 3)
+    return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: d.newSubscribers, ma: ma[i] }))
+  }, [histLast])
+
+  const chartCardCls = 'bg-white rounded-2xl border border-gray-100 p-4 shadow-sm'
+
   return (
     <div className="p-8 max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Newsletter</h1>
           <p className="text-gray-500 text-sm mt-0.5">{monthLabel(year, month)} · Seeds Business Radar</p>
@@ -77,11 +124,70 @@ export default function NewsletterPage() {
         <div className="flex items-center justify-center h-32 text-gray-400">Cargando...</div>
       ) : (
         <>
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <StatCard label="Views totales" value={formatNumber(totalViews)} />
-            <StatCard label="Episodios" value={String(episodes.length)} />
-            <StatCard label="Nuevos suscriptores" value={formatNumber(savedNewSubs)} />
+          {/* KPI trend cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            {[
+              { label: 'Views totales', val: totalViews, prev: prevH?.views, qPrev: qPrevH?.views },
+              { label: 'Nuevos suscriptores', val: savedNewSubs, prev: prevH?.newSubscribers, qPrev: qPrevH?.newSubscribers },
+              { label: 'Episodios', val: episodes.length, prev: undefined, qPrev: undefined },
+            ].map(({ label, val, prev, qPrev }) => (
+              <div key={label} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+                <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">{label}</div>
+                <div className="text-2xl font-bold text-gray-900">{formatNumber(val)}</div>
+                <div className="flex gap-3 mt-1 flex-wrap">
+                  {prev !== undefined && (
+                    <span className="text-xs text-gray-400">
+                      <TrendBadge value={val} prev={prev} />
+                      <span className="ml-1">vs mes ant.</span>
+                    </span>
+                  )}
+                  {qPrev !== undefined && (
+                    <span className="text-xs text-gray-400">
+                      <TrendBadge value={val} prev={qPrev} />
+                      <span className="ml-1">vs Q ant.</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
+
+          {/* Historical charts */}
+          {histLast.length >= 1 && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+              <div className={chartCardCls}>
+                <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Visualizaciones artículos</div>
+                <ResponsiveContainer width="100%" height={200}>
+                  <ComposedChart data={viewsChart} barCategoryGap="22%" margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} />
+                    <Tooltip formatter={(v, n) => [formatNumber(Number(v)), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                    <Bar dataKey="value" name="Views" fill="#fed7aa" radius={[4, 4, 0, 0]}>
+                      <LabelList dataKey="value" position="top" style={{ fontSize: 10, fontWeight: 700, fill: '#374151' }} formatter={(v: unknown) => formatNumber(Number(v))} />
+                    </Bar>
+                    <Line type="monotone" dataKey="ma" name="Media 3m" stroke="#f97316" strokeDasharray="5 3" dot={false} strokeWidth={2} connectNulls />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className={chartCardCls}>
+                <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Nuevos suscriptores</div>
+                <ResponsiveContainer width="100%" height={200}>
+                  <ComposedChart data={subsChart} barCategoryGap="22%" margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} />
+                    <Tooltip formatter={(v, n) => [formatNumber(Number(v)), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                    <Bar dataKey="value" name="Nuevos subs" fill="#fdba74" radius={[4, 4, 0, 0]}>
+                      <LabelList dataKey="value" position="top" style={{ fontSize: 10, fontWeight: 700, fill: '#374151' }} formatter={(v: unknown) => formatNumber(Number(v))} />
+                    </Bar>
+                    <Line type="monotone" dataKey="ma" name="Media 3m" stroke="#ea580c" strokeDasharray="5 3" dot={false} strokeWidth={2} connectNulls />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
 
           {/* New subscribers */}
           <Card className="mb-6">
