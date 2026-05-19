@@ -9,7 +9,7 @@ import { formatNumber, formatPercent, currentYearMonth, monthLabel } from '@/lib
 import type { InstagramStats, InstagramPost } from '@/lib/types'
 import { Trash2, ExternalLink, Plus, ChevronUp, ChevronDown } from 'lucide-react'
 
-type SortKey = 'views' | 'impressions' | 'likes' | 'er'
+type SortKey = 'views' | 'likes' | 'er'
 type SortDir = 'asc' | 'desc'
 
 function erForPost(p: InstagramPost): number {
@@ -112,7 +112,6 @@ export default function InstagramPage() {
   const sorted = [...filtered].sort((a, b) => {
     let av = 0, bv = 0
     if (sortKey === 'views') { av = a.views; bv = b.views }
-    else if (sortKey === 'impressions') { av = a.impressions; bv = b.impressions }
     else if (sortKey === 'likes') { av = a.likes; bv = b.likes }
     else if (sortKey === 'er') { av = erForPost(a); bv = erForPost(b) }
     return sortDir === 'desc' ? bv - av : av - bv
@@ -137,9 +136,8 @@ export default function InstagramPage() {
       ) : (
         <>
           {/* KPIs */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <StatCard label="Views totales" value={formatNumber(stats?.totalViews ?? 0)} />
-            <StatCard label="Impresiones" value={formatNumber(stats?.totalImpressions ?? 0)} />
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+            <StatCard label="Alcance total" value={formatNumber(stats?.totalViews ?? 0)} sub="max(Views, Reach) por post" />
             <StatCard label="Interacciones" value={formatNumber(stats?.totalInteractions ?? 0)} />
             <StatCard label="ER% promedio" value={formatPercent(stats?.avgER ?? 0)} />
           </div>
@@ -270,11 +268,7 @@ export default function InstagramPage() {
                     <th className="text-left py-2 px-2 text-xs font-medium text-gray-400">Fecha</th>
                     <th className="text-right py-2 px-2 text-xs font-medium text-gray-400 cursor-pointer select-none hover:text-gray-600"
                       onClick={() => toggleSort('views')}>
-                      <span className="flex items-center justify-end gap-1">Views <SortIcon k="views" /></span>
-                    </th>
-                    <th className="text-right py-2 px-2 text-xs font-medium text-gray-400 cursor-pointer select-none hover:text-gray-600"
-                      onClick={() => toggleSort('impressions')}>
-                      <span className="flex items-center justify-end gap-1">Impr. <SortIcon k="impressions" /></span>
+                      <span className="flex items-center justify-end gap-1">Alcance <SortIcon k="views" /></span>
                     </th>
                     <th className="text-right py-2 px-2 text-xs font-medium text-gray-400 cursor-pointer select-none hover:text-gray-600"
                       onClick={() => toggleSort('likes')}>
@@ -290,7 +284,7 @@ export default function InstagramPage() {
                 </thead>
                 <tbody>
                   {sorted.length === 0 && (
-                    <tr><td colSpan={9} className="py-8 text-center text-gray-400 text-sm">
+                    <tr><td colSpan={8} className="py-8 text-center text-gray-400 text-sm">
                       No hay posts para este mes. Subí un CSV o agregá uno manual.
                     </td></tr>
                   )}
@@ -310,7 +304,6 @@ export default function InstagramPage() {
                       </td>
                       <td className="py-2 px-2 text-gray-500 whitespace-nowrap">{post.post_date ?? '—'}</td>
                       <td className="py-2 px-2 text-right font-medium text-gray-800">{formatNumber(post.views)}</td>
-                      <td className="py-2 px-2 text-right text-gray-600">{formatNumber(post.impressions)}</td>
                       <td className="py-2 px-2 text-right text-gray-600">{formatNumber(post.likes)}</td>
                       <td className="py-2 px-2 text-right font-medium text-emerald-600">{formatPercent(erForPost(post))}</td>
                       <td className="py-2 px-2 text-right">

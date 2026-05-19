@@ -1,36 +1,29 @@
 import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
 
-// ─── Instagram CSV (Meta Business Suite) ─────
-// Headers: Description, Content type, Publish time, Permalink,
-//          Impressions, Reach, Likes, Comments, Shares, Saves, Views
+// ─── Instagram CSV (Meta Business Suite → Content export) ────────────────────
+// Real columns from weareseeds_ export:
+//   Post ID, Account ID, Account username, Account name, Description,
+//   Duration (sec), Publish time, Permalink, Post type, Data comment, Date,
+//   Views, Likes, Shares, Comments, Saves, Reach, Follows
+//
+// Notes:
+//   - No "Impressions" column — only Views and Reach
+//   - We use max(Views, Reach) as the single reach/views metric
+//   - Collab posts are detected by Account username != "weareseeds_"
+//   - Publish time format: "MM/DD/YYYY HH:MM"
 export interface RawInstagramRow {
   description: string
   type: 'Reel' | 'Post' | 'Collab' | 'Story'
   post_date: string | null
   permalink: string | null
-  impressions: number
-  views: number
+  impressions: number  // max(Views, Reach) — single unified metric
+  views: number        // same value, kept for DB compatibility
   likes: number
   comments: number
   shares: number
   saves: number
   collab_account: string | null
-}
-
-function detectCollabAccount(description: string, permalink: string | null): string | null {
-  // Collabs from other accounts have permalink pointing to another account
-  if (!permalink) return null
-  const match = permalink.match(/instagram\.com\/([^/]+)\//)
-  if (match && match[1] !== 'weareseeds_' && match[1] !== 'p' && match[1] !== 'reel') {
-    return `@${match[1]}`
-  }
-  // Also check if description mentions another account handle
-  const descMatch = description.match(/@[\w.]+/)
-  if (descMatch && !description.toLowerCase().includes('weareseeds')) {
-    return descMatch[0]
-  }
-  return null
 }
 
 function normalizeInstagramType(raw: string): 'Reel' | 'Post' | 'Collab' | 'Story' {
@@ -41,35 +34,49 @@ function normalizeInstagramType(raw: string): 'Reel' | 'Post' | 'Collab' | 'Stor
   return 'Post'
 }
 
+function parseDateMMDDYYYYTime(raw: string): string | null {
+  // "04/01/2026 15:32" → "2026-04-01"
+  const m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+  if (m) return `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`
+  return raw.slice(0, 10) || null
+}
+
 export function parseInstagramCSV(text: string): RawInstagramRow[] {
   const result = Papa.parse<Record<string, string>>(text, {
     header: true,
     skipEmptyLines: true,
-    transformHeader: h => h.trim().toLowerCase().replace(/\s+/g, '_'),
+    transformHeader: h => h.trim().toLowerCase().replace(/[\s()]/g, '_').replace(/_+/g, '_').replace(/_$/, ''),
   })
 
   return result.data.map(row => {
-    const permalink = row['permalink'] || row['post_link'] || row['url'] || null
-    const description = row['description'] || row['post_description'] || ''
-    const rawType = row['content_type'] || row['type'] || row['media_type'] || 'Post'
+    const permalink    = row['permalink'] || null
+    const description  = row['description'] || ''
+    const username     = (row['account_username'] || '').toLowerCase().trim()
+    const rawType      = row['post_type'] || row['type'] || row['content_type'] || 'Post'
 
-    const collab_account = detectCollabAccount(description, permalink)
-    const type = collab_account ? 'Collab' : normalizeInstagramType(rawType)
+    // Collab = post from an account that isn't weareseeds_
+    const isCollab     = username !== '' && username !== 'weareseeds_'
+    const collab_account = isCollab ? `@${row['account_username'] || username}` : null
+    const type         = isCollab ? 'Collab' : normalizeInstagramType(rawType)
+
+    const views  = parseFloat(row['views'] || '0') || 0
+    const reach  = parseFloat(row['reach'] || '0') || 0
+    const maxVal = Math.max(views, reach) // unified metric as requested
 
     return {
       description,
       type,
-      post_date: row['publish_time'] ? row['publish_time'].slice(0, 10) : null,
+      post_date: row['publish_time'] ? parseDateMMDDYYYYTime(row['publish_time']) : null,
       permalink,
-      impressions: parseFloat(row['impressions'] || '0') || 0,
-      views: parseFloat(row['video_views'] || row['views'] || row['reach'] || '0') || 0,
-      likes: parseFloat(row['likes'] || '0') || 0,
+      impressions: maxVal,
+      views: maxVal,
+      likes:    parseFloat(row['likes']    || '0') || 0,
       comments: parseFloat(row['comments'] || '0') || 0,
-      shares: parseFloat(row['shares'] || '0') || 0,
-      saves: parseFloat(row['saves'] || '0') || 0,
+      shares:   parseFloat(row['shares']   || '0') || 0,
+      saves:    parseFloat(row['saves']    || '0') || 0,
       collab_account,
     }
-  }).filter(r => r.permalink || r.description) // at least one identifier
+  }).filter(r => r.permalink || r.description)
 }
 
 // ─── LinkedIn XLS (LinkedIn Analytics → Exportar) ─────────────────────────
