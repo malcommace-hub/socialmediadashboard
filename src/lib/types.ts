@@ -10,6 +10,8 @@ export interface InstagramMonthly {
   month: number
   total_followers: number
   new_followers: number
+  total_views_manual: number   // views from Meta app overview (entered manually)
+  total_reach_manual: number   // accounts reached (entered manually)
 }
 
 export interface InstagramPost {
@@ -37,6 +39,8 @@ export interface InstagramStats {
   totalImpressions: number
   totalInteractions: number
   avgER: number
+  externalCollabViews: number  // sum of manually-added influencer-hosted collabs
+  grandTotalViews: number      // total_views_manual (app) + externalCollabViews
 }
 
 // ─── LinkedIn ────────────────────────────────

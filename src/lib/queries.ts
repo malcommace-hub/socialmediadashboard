@@ -18,17 +18,33 @@ export async function getInstagramStats(filter: MonthlyFilter) {
   const totalInteractions = posts.reduce((a, p) => a + (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0) + (p.saves ?? 0), 0)
   const avgER = computeAvgER(posts.map(p => ({ impressions: p.impressions, interactions: (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0) + (p.saves ?? 0) })))
 
+  // External collab views = manually added posts (is_manual=true) with type=Collab
+  // These come from influencer-hosted content and are added on top of the Meta app total
+  const externalCollabViews = posts
+    .filter(p => p.is_manual && p.type === 'Collab')
+    .reduce((a, p) => a + (p.views ?? 0), 0)
+
+  const monthly = monthlyRes.data ?? null
+  // Grand total = manual app number + external collab views added manually
+  const grandTotalViews = (monthly?.total_views_manual ?? 0) + externalCollabViews
+
   return {
-    monthly: monthlyRes.data ?? null,
+    monthly,
     posts,
     totalViews,
     totalImpressions,
     totalInteractions,
     avgER,
+    externalCollabViews,
+    grandTotalViews,
   }
 }
 
-export async function upsertInstagramMonthly(data: { year: number; month: number; total_followers: number; new_followers: number }) {
+export async function upsertInstagramMonthly(data: {
+  year: number; month: number
+  total_followers: number; new_followers: number
+  total_views_manual?: number; total_reach_manual?: number
+}) {
   return supabase.from('instagram_monthly').upsert(data, { onConflict: 'year,month' }).select().single()
 }
 

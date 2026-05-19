@@ -4,10 +4,13 @@ import { StatCard } from '@/components/ui/stat-card'
 import { MonthSelector } from '@/components/ui/month-selector'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { getInstagramStats, deleteInstagramPost, upsertInstagramMonthly, addInstagramPostManual } from '@/lib/queries'
+import {
+  getInstagramStats, deleteInstagramPost,
+  upsertInstagramMonthly, addInstagramPostManual,
+} from '@/lib/queries'
 import { formatNumber, formatPercent, currentYearMonth, monthLabel } from '@/lib/utils'
 import type { InstagramStats, InstagramPost } from '@/lib/types'
-import { Trash2, ExternalLink, Plus, ChevronUp, ChevronDown } from 'lucide-react'
+import { Trash2, ExternalLink, Plus, ChevronUp, ChevronDown, PencilLine } from 'lucide-react'
 
 type SortKey = 'views' | 'likes' | 'er'
 type SortDir = 'asc' | 'desc'
@@ -15,6 +18,13 @@ type SortDir = 'asc' | 'desc'
 function erForPost(p: InstagramPost): number {
   if (!p.impressions) return 0
   return ((p.likes + p.comments + p.shares + p.saves) / p.impressions) * 100
+}
+
+const emptyNewPost = {
+  type: 'Collab' as InstagramPost['type'],
+  description: '', post_date: '',
+  views: '', likes: '', comments: '', shares: '', saves: '',
+  permalink: '', collab_account: '',
 }
 
 export default function InstagramPage() {
@@ -27,27 +37,21 @@ export default function InstagramPage() {
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [filterType, setFilterType] = useState<string>('all')
   const [showAddForm, setShowAddForm] = useState(false)
+  const [showAddCollabForm, setShowAddCollabForm] = useState(false)
   const [editMonthly, setEditMonthly] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  // Monthly form state
+  // Monthly manual fields
   const [followers, setFollowers] = useState('')
   const [newFollowers, setNewFollowers] = useState('')
+  const [viewsApp, setViewsApp] = useState('')      // from Meta app overview
+  const [reachApp, setReachApp] = useState('')       // accounts reached
 
-  // New post form state
-  const [newPost, setNewPost] = useState({
-    type: 'Reel' as InstagramPost['type'],
-    description: '',
-    post_date: '',
-    views: '',
-    impressions: '',
-    likes: '',
-    comments: '',
-    shares: '',
-    saves: '',
-    permalink: '',
-    collab_account: '',
-  })
+  // New regular post
+  const [newPost, setNewPost] = useState({ ...emptyNewPost, type: 'Reel' as InstagramPost['type'] })
+
+  // New external collab
+  const [newCollab, setNewCollab] = useState({ ...emptyNewPost })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -55,6 +59,8 @@ export default function InstagramPage() {
     setStats(data)
     setFollowers(String(data.monthly?.total_followers ?? ''))
     setNewFollowers(String(data.monthly?.new_followers ?? ''))
+    setViewsApp(String(data.monthly?.total_views_manual ?? ''))
+    setReachApp(String(data.monthly?.total_reach_manual ?? ''))
     setLoading(false)
   }, [year, month])
 
@@ -66,32 +72,35 @@ export default function InstagramPage() {
       year, month,
       total_followers: parseInt(followers) || 0,
       new_followers: parseInt(newFollowers) || 0,
+      total_views_manual: parseInt(viewsApp) || 0,
+      total_reach_manual: parseInt(reachApp) || 0,
     })
     await load()
     setEditMonthly(false)
     setSaving(false)
   }
 
-  async function saveNewPost() {
-    if (!newPost.description && !newPost.permalink) return
+  async function savePost(isCollab: boolean) {
+    const src = isCollab ? newCollab : newPost
+    if (!src.description && !src.permalink) return
     setSaving(true)
     await addInstagramPostManual({
       year, month,
-      type: newPost.type,
-      description: newPost.description || null,
-      post_date: newPost.post_date || null,
-      views: parseInt(newPost.views) || 0,
-      impressions: parseInt(newPost.impressions) || 0,
-      likes: parseInt(newPost.likes) || 0,
-      comments: parseInt(newPost.comments) || 0,
-      shares: parseInt(newPost.shares) || 0,
-      saves: parseInt(newPost.saves) || 0,
-      permalink: newPost.permalink || null,
-      collab_account: newPost.collab_account || null,
+      type: isCollab ? 'Collab' : src.type,
+      description: src.description || null,
+      post_date: src.post_date || null,
+      views: parseInt(src.views) || 0,
+      impressions: parseInt(src.views) || 0,
+      likes: parseInt(src.likes) || 0,
+      comments: parseInt(src.comments) || 0,
+      shares: parseInt(src.shares) || 0,
+      saves: parseInt(src.saves) || 0,
+      permalink: src.permalink || null,
+      collab_account: src.collab_account || null,
       is_manual: true,
     })
-    setShowAddForm(false)
-    setNewPost({ type: 'Reel', description: '', post_date: '', views: '', impressions: '', likes: '', comments: '', shares: '', saves: '', permalink: '', collab_account: '' })
+    if (isCollab) { setNewCollab({ ...emptyNewPost }); setShowAddCollabForm(false) }
+    else { setNewPost({ ...emptyNewPost, type: 'Reel' }); setShowAddForm(false) }
     await load()
     setSaving(false)
   }
@@ -108,7 +117,9 @@ export default function InstagramPage() {
   }
 
   const posts = stats?.posts ?? []
-  const filtered = filterType === 'all' ? posts : posts.filter(p => p.type === filterType)
+  const externalCollabs = posts.filter(p => p.is_manual && p.type === 'Collab')
+  const regularPosts = posts.filter(p => !(p.is_manual && p.type === 'Collab'))
+  const filtered = filterType === 'all' ? regularPosts : regularPosts.filter(p => p.type === filterType)
   const sorted = [...filtered].sort((a, b) => {
     let av = 0, bv = 0
     if (sortKey === 'views') { av = a.views; bv = b.views }
@@ -120,6 +131,10 @@ export default function InstagramPage() {
   const SortIcon = ({ k }: { k: SortKey }) => sortKey === k
     ? (sortDir === 'desc' ? <ChevronDown size={13} /> : <ChevronUp size={13} />)
     : null
+
+  const grandTotal = stats?.grandTotalViews ?? 0
+  const collabViewsSum = stats?.externalCollabViews ?? 0
+  const appViews = stats?.monthly?.total_views_manual ?? 0
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -136,45 +151,77 @@ export default function InstagramPage() {
       ) : (
         <>
           {/* KPIs */}
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-            <StatCard label="Alcance total" value={formatNumber(stats?.totalViews ?? 0)} sub="max(Views, Reach) por post" />
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <StatCard
+              label="Views totales del mes"
+              value={formatNumber(grandTotal)}
+              sub={collabViewsSum > 0
+                ? `App: ${formatNumber(appViews)} + Collabs ext.: ${formatNumber(collabViewsSum)}`
+                : 'Cargá el número desde la app de Meta'}
+            />
+            <StatCard label="Accounts reached" value={formatNumber(stats?.monthly?.total_reach_manual ?? 0)} />
             <StatCard label="Interacciones" value={formatNumber(stats?.totalInteractions ?? 0)} />
             <StatCard label="ER% promedio" value={formatPercent(stats?.avgER ?? 0)} />
           </div>
 
-          {/* Followers card (editable) */}
+          {/* Monthly manual data card */}
           <Card className="mb-6">
             <div className="flex items-center justify-between mb-3">
-              <CardTitle>Seguidores del mes</CardTitle>
-              <button
-                onClick={() => setEditMonthly(!editMonthly)}
-                className="text-xs text-emerald-600 hover:text-emerald-700 font-medium"
-              >
-                {editMonthly ? 'Cancelar' : 'Editar'}
+              <CardTitle>Datos del mes (desde la app)</CardTitle>
+              <button onClick={() => setEditMonthly(!editMonthly)}
+                className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 font-medium">
+                <PencilLine size={12} /> {editMonthly ? 'Cancelar' : 'Editar'}
               </button>
             </div>
+
             {editMonthly ? (
-              <div className="flex gap-3 items-end">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">Total seguidores</label>
+                  <label className="text-xs text-gray-500 block mb-1">Views totales (app)</label>
+                  <input type="number" value={viewsApp} onChange={e => setViewsApp(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Accounts reached</label>
+                  <input type="number" value={reachApp} onChange={e => setReachApp(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Seguidores totales</label>
                   <input type="number" value={followers} onChange={e => setFollowers(e.target.value)}
-                    className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 block mb-1">Nuevos seguidores</label>
                   <input type="number" value={newFollowers} onChange={e => setNewFollowers(e.target.value)}
-                    className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                 </div>
-                <button onClick={saveMonthly} disabled={saving}
-                  className="bg-emerald-500 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-emerald-400 disabled:opacity-50">
-                  {saving ? 'Guardando...' : 'Guardar'}
-                </button>
+                <div className="col-span-2 lg:col-span-4 flex gap-2 pt-1">
+                  <button onClick={saveMonthly} disabled={saving}
+                    className="bg-emerald-500 text-white px-5 py-1.5 rounded-lg text-sm font-medium hover:bg-emerald-400 disabled:opacity-50">
+                    {saving ? 'Guardando...' : 'Guardar'}
+                  </button>
+                </div>
               </div>
             ) : (
-              <div className="flex gap-8">
+              <div className="flex flex-wrap gap-8">
                 <div>
-                  <div className="text-2xl font-bold text-gray-900">{formatNumber(stats?.monthly?.total_followers ?? 0)}</div>
-                  <div className="text-xs text-gray-400">Seguidores totales</div>
+                  <div className="text-2xl font-bold">{formatNumber(appViews)}</div>
+                  <div className="text-xs text-gray-400">Views (app)</div>
+                </div>
+                {collabViewsSum > 0 && (
+                  <div>
+                    <div className="text-2xl font-bold text-orange-500">+{formatNumber(collabViewsSum)}</div>
+                    <div className="text-xs text-gray-400">Collabs externos</div>
+                  </div>
+                )}
+                <div>
+                  <div className="text-2xl font-bold text-emerald-600">{formatNumber(grandTotal)}</div>
+                  <div className="text-xs text-gray-400">Total reportado</div>
+                </div>
+                <div className="border-l border-gray-100 pl-8">
+                  <div className="text-2xl font-bold">{formatNumber(stats?.monthly?.total_followers ?? 0)}</div>
+                  <div className="text-xs text-gray-400">Seguidores</div>
                 </div>
                 <div>
                   <div className="text-2xl font-bold text-emerald-600">+{formatNumber(stats?.monthly?.new_followers ?? 0)}</div>
@@ -184,30 +231,145 @@ export default function InstagramPage() {
             )}
           </Card>
 
-          {/* Posts table */}
+          {/* External collabs section */}
+          <Card className="mb-6 border-l-4 border-l-orange-400">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <CardTitle>Collabs externos</CardTitle>
+                <p className="text-xs text-gray-400 mt-1">
+                  Contenidos subidos por influencers donde Seeds figura como colaborador.
+                  Sus views se suman automáticamente al total.
+                </p>
+              </div>
+              <button onClick={() => setShowAddCollabForm(!showAddCollabForm)}
+                className="flex items-center gap-1 text-xs bg-orange-500 text-white px-3 py-1 rounded-lg font-medium hover:bg-orange-400">
+                <Plus size={13} /> Agregar collab
+              </button>
+            </div>
+
+            {showAddCollabForm && (
+              <div className="bg-orange-50 rounded-xl p-4 mb-4 border border-orange-200">
+                <div className="text-sm font-medium text-gray-700 mb-3">Nuevo contenido collab externo</div>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="col-span-2">
+                    <label className="text-xs text-gray-500 block mb-1">Descripción / título del post</label>
+                    <input type="text" placeholder="Descripción del contenido"
+                      value={newCollab.description} onChange={e => setNewCollab(v => ({ ...v, description: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Cuenta del influencer</label>
+                    <input type="text" placeholder="@patriciajebsen"
+                      value={newCollab.collab_account} onChange={e => setNewCollab(v => ({ ...v, collab_account: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Fecha</label>
+                    <input type="date" value={newCollab.post_date} onChange={e => setNewCollab(v => ({ ...v, post_date: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Views</label>
+                    <input type="number" value={newCollab.views} onChange={e => setNewCollab(v => ({ ...v, views: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Likes</label>
+                    <input type="number" value={newCollab.likes} onChange={e => setNewCollab(v => ({ ...v, likes: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Comentarios</label>
+                    <input type="number" value={newCollab.comments} onChange={e => setNewCollab(v => ({ ...v, comments: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Link del post</label>
+                    <input type="text" placeholder="https://instagram.com/..."
+                      value={newCollab.permalink} onChange={e => setNewCollab(v => ({ ...v, permalink: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-3">
+                  <button onClick={() => savePost(true)} disabled={saving}
+                    className="bg-orange-500 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-orange-400 disabled:opacity-50">
+                    {saving ? 'Guardando...' : 'Guardar collab'}
+                  </button>
+                  <button onClick={() => setShowAddCollabForm(false)} className="text-sm text-gray-500 px-3 py-1.5 hover:text-gray-700">Cancelar</button>
+                </div>
+              </div>
+            )}
+
+            {externalCollabs.length === 0 && !showAddCollabForm ? (
+              <p className="text-sm text-gray-400 py-2">No hay collabs externos cargados para este mes.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      <th className="text-left py-2 px-2 text-xs font-medium text-gray-400">Cuenta</th>
+                      <th className="text-left py-2 px-2 text-xs font-medium text-gray-400">Descripción</th>
+                      <th className="text-left py-2 px-2 text-xs font-medium text-gray-400">Fecha</th>
+                      <th className="text-right py-2 px-2 text-xs font-medium text-gray-400">Views</th>
+                      <th className="text-right py-2 px-2 text-xs font-medium text-gray-400">Likes</th>
+                      <th className="text-right py-2 px-2 text-xs font-medium text-gray-400">Link</th>
+                      <th className="py-2 px-2 w-8" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {externalCollabs.map(post => (
+                      <tr key={post.id} className="border-b border-gray-50 hover:bg-orange-50 group">
+                        <td className="py-2 px-2">
+                          <span className="text-xs font-medium text-orange-600">{post.collab_account || '—'}</span>
+                        </td>
+                        <td className="py-2 px-2 text-gray-700 max-w-xs truncate">{post.description || '—'}</td>
+                        <td className="py-2 px-2 text-gray-500 whitespace-nowrap">{post.post_date ?? '—'}</td>
+                        <td className="py-2 px-2 text-right font-medium">{formatNumber(post.views)}</td>
+                        <td className="py-2 px-2 text-right text-gray-600">{formatNumber(post.likes)}</td>
+                        <td className="py-2 px-2 text-right">
+                          {post.permalink
+                            ? <a href={post.permalink} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 inline-flex"><ExternalLink size={14} /></a>
+                            : '—'}
+                        </td>
+                        <td className="py-2 px-2 text-right">
+                          <button onClick={() => handleDelete(post.id)}
+                            className="text-gray-200 hover:text-red-500 group-hover:text-gray-400 transition-colors">
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="bg-orange-50">
+                      <td colSpan={3} className="py-2 px-2 text-xs font-semibold text-orange-700">Total collabs externos</td>
+                      <td className="py-2 px-2 text-right text-sm font-bold text-orange-700">{formatNumber(collabViewsSum)}</td>
+                      <td colSpan={3} />
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+
+          {/* Regular posts table */}
           <Card>
             <div className="flex items-center justify-between mb-4">
-              <CardTitle>Contenido del mes ({posts.length} posts)</CardTitle>
+              <CardTitle>Contenido propio del mes ({regularPosts.length} posts)</CardTitle>
               <div className="flex gap-2">
-                {/* Type filter */}
                 <div className="flex gap-1">
                   {['all', 'Reel', 'Post', 'Collab', 'Story'].map(t => (
-                    <button key={t}
-                      onClick={() => setFilterType(t)}
+                    <button key={t} onClick={() => setFilterType(t)}
                       className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-colors ${filterType === t ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                       {t === 'all' ? 'Todos' : t}
                     </button>
                   ))}
                 </div>
-                <button
-                  onClick={() => setShowAddForm(!showAddForm)}
+                <button onClick={() => setShowAddForm(!showAddForm)}
                   className="flex items-center gap-1 text-xs bg-emerald-500 text-white px-3 py-1 rounded-lg font-medium hover:bg-emerald-400">
                   <Plus size={13} /> Agregar manual
                 </button>
               </div>
             </div>
 
-            {/* Add form */}
             {showAddForm && (
               <div className="bg-gray-50 rounded-xl p-4 mb-4 border border-gray-200">
                 <div className="text-sm font-medium text-gray-700 mb-3">Nuevo post manual</div>
@@ -226,35 +388,35 @@ export default function InstagramPage() {
                   </div>
                   <div className="col-span-2">
                     <label className="text-xs text-gray-500 block mb-1">Descripción</label>
-                    <input type="text" placeholder="Descripción del post" value={newPost.description} onChange={e => setNewPost(p => ({ ...p, description: e.target.value }))}
+                    <input type="text" value={newPost.description} onChange={e => setNewPost(p => ({ ...p, description: e.target.value }))}
                       className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                   </div>
-                  {['views', 'impressions', 'likes', 'comments', 'shares', 'saves'].map(field => (
+                  {['views', 'likes', 'comments', 'shares', 'saves'].map(field => (
                     <div key={field}>
                       <label className="text-xs text-gray-500 block mb-1 capitalize">{field}</label>
-                      <input type="number" value={newPost[field as keyof typeof newPost]} onChange={e => setNewPost(p => ({ ...p, [field]: e.target.value }))}
+                      <input type="number" value={newPost[field as keyof typeof newPost]}
+                        onChange={e => setNewPost(p => ({ ...p, [field]: e.target.value }))}
                         className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                     </div>
                   ))}
                   <div>
-                    <label className="text-xs text-gray-500 block mb-1">Permalink (URL)</label>
-                    <input type="text" placeholder="https://instagram.com/..." value={newPost.permalink} onChange={e => setNewPost(p => ({ ...p, permalink: e.target.value }))}
+                    <label className="text-xs text-gray-500 block mb-1">Permalink</label>
+                    <input type="text" value={newPost.permalink} onChange={e => setNewPost(p => ({ ...p, permalink: e.target.value }))}
                       className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                   </div>
                   <div>
                     <label className="text-xs text-gray-500 block mb-1">Cuenta collab</label>
-                    <input type="text" placeholder="@sofijobs" value={newPost.collab_account} onChange={e => setNewPost(p => ({ ...p, collab_account: e.target.value }))}
+                    <input type="text" placeholder="@sofijobs" value={newPost.collab_account}
+                      onChange={e => setNewPost(p => ({ ...p, collab_account: e.target.value }))}
                       className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                   </div>
                 </div>
                 <div className="flex gap-2 mt-3">
-                  <button onClick={saveNewPost} disabled={saving}
+                  <button onClick={() => savePost(false)} disabled={saving}
                     className="bg-emerald-500 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-emerald-400 disabled:opacity-50">
                     {saving ? 'Guardando...' : 'Guardar post'}
                   </button>
-                  <button onClick={() => setShowAddForm(false)} className="text-sm text-gray-500 px-3 py-1.5 hover:text-gray-700">
-                    Cancelar
-                  </button>
+                  <button onClick={() => setShowAddForm(false)} className="text-sm text-gray-500 px-3 py-1.5 hover:text-gray-700">Cancelar</button>
                 </div>
               </div>
             )}
@@ -285,7 +447,7 @@ export default function InstagramPage() {
                 <tbody>
                   {sorted.length === 0 && (
                     <tr><td colSpan={8} className="py-8 text-center text-gray-400 text-sm">
-                      No hay posts para este mes. Subí un CSV o agregá uno manual.
+                      No hay posts. Subí un CSV o agregá uno manual.
                     </td></tr>
                   )}
                   {sorted.map(post => (
@@ -307,12 +469,9 @@ export default function InstagramPage() {
                       <td className="py-2 px-2 text-right text-gray-600">{formatNumber(post.likes)}</td>
                       <td className="py-2 px-2 text-right font-medium text-emerald-600">{formatPercent(erForPost(post))}</td>
                       <td className="py-2 px-2 text-right">
-                        {post.permalink ? (
-                          <a href={post.permalink} target="_blank" rel="noopener noreferrer"
-                            className="text-gray-400 hover:text-blue-600 inline-flex">
-                            <ExternalLink size={14} />
-                          </a>
-                        ) : '—'}
+                        {post.permalink
+                          ? <a href={post.permalink} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 inline-flex"><ExternalLink size={14} /></a>
+                          : '—'}
                       </td>
                       <td className="py-2 px-2 text-right">
                         <button onClick={() => handleDelete(post.id)}
