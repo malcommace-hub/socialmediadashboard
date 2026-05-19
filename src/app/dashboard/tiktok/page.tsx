@@ -257,7 +257,11 @@ export default function TikTokPage() {
                         <input type="checkbox" className="rounded" checked={selected.has(v.id)} onChange={() => toggleSelect(v.id)} />
                       </td>
                       <td className="py-2 px-2 max-w-xs">
-                        <div className="text-gray-700 truncate">{v.title || '(sin título)'}</div>
+                        {v.permalink ? (
+                          <a href={v.permalink} target="_blank" rel="noopener noreferrer" className="text-gray-700 hover:text-blue-600 truncate block">{v.title || '(sin título)'}</a>
+                        ) : (
+                          <div className="text-gray-700 truncate">{v.title || '(sin título)'}</div>
+                        )}
                         {v.is_manual && <Badge variant="manual">Manual</Badge>}
                       </td>
                       <td className="py-2 px-2 text-gray-500 whitespace-nowrap">{v.video_date ?? '—'}</td>

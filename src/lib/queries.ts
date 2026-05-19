@@ -107,18 +107,19 @@ export async function getTikTokStats(filter: MonthlyFilter) {
   ])
 
   const videos: TikTokVideo[] = videosRes.data ?? []
-  const totalViews = videos.reduce((a, v) => a + (v.views ?? 0), 0)
-  const totalInteractions = videos.reduce((a, v) => a + (v.likes ?? 0) + (v.comments ?? 0) + (v.shares ?? 0), 0)
+  const monthly = monthlyRes.data ?? null
+  // Prefer Overview-sourced monthly totals; fall back to summing video rows
+  const totalViews = monthly?.total_views || videos.reduce((a, v) => a + (v.views ?? 0), 0)
+  const totalInteractions = monthly?.total_interactions || videos.reduce((a, v) => a + (v.likes ?? 0) + (v.comments ?? 0) + (v.shares ?? 0), 0)
 
-  return {
-    monthly: monthlyRes.data ?? null,
-    videos,
-    totalViews,
-    totalInteractions,
-  }
+  return { monthly, videos, totalViews, totalInteractions }
 }
 
-export async function upsertTikTokMonthly(data: { year: number; month: number; total_followers: number; new_followers: number }) {
+export async function upsertTikTokMonthly(data: {
+  year: number; month: number
+  total_followers?: number; new_followers?: number
+  total_views?: number; total_interactions?: number
+}) {
   return supabase.from('tiktok_monthly').upsert(data, { onConflict: 'year,month' }).select().single()
 }
 

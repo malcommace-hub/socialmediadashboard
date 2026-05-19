@@ -80,6 +80,8 @@ export interface TikTokMonthly {
   month: number
   total_followers: number
   new_followers: number
+  total_views: number          // from Overview CSV (period total views)
+  total_interactions: number   // from Overview CSV (period total interactions)
 }
 
 export interface TikTokVideo {

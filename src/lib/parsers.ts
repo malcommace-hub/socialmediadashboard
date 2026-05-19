@@ -298,8 +298,11 @@ export function parseLinkedInXLSWithDebug(data: ArrayBuffer | string): { rows: R
   return linkedInParseCore(data)
 }
 
-// ─── TikTok CSV (TikTok Studio) ──────────────
-// Headers: Video title, Video link, Views, Likes, Comments, Shares, Date
+// ─── TikTok Content CSV (TikTok Studio → Content tab) ───────────────────────
+// Real columns: Time, Video title, Video link, Post time, Total likes,
+//               Total comments, Total shares, Total views
+// "Total views/likes/etc." = lifetime totals for each video
+// "Post time" = publish date in "Month DD" format (no year)
 export interface RawTikTokRow {
   title: string
   permalink: string | null
@@ -317,19 +320,51 @@ export function parseTikTokCSV(text: string): RawTikTokRow[] {
     transformHeader: h => h.trim().toLowerCase().replace(/\s+/g, '_'),
   })
 
-  // Reject if this looks like a daily overview CSV (no title, no links) — user needs per-video export
-  const hasVideoData = result.data.some(row => row['video_title'] || row['title'] || row['video_link'] || row['link'])
+  const hasVideoData = result.data.some(row =>
+    row['video_title'] || row['title'] || row['video_link'] || row['link']
+  )
   if (!hasVideoData && result.data.length > 0) {
-    throw new Error('Este archivo parece ser el resumen diario (Overview), no el export de videos individuales. En TikTok Studio, exportá desde la sección "Contenido" o "Videos" para obtener datos por video.')
+    throw new Error('Este archivo parece ser el resumen diario (Overview). Usá el export de "Contenido" para datos por video, o subí el Overview en la sección de datos mensuales de TikTok.')
   }
 
   return result.data.map(row => ({
     title: row['video_title'] || row['title'] || '',
     permalink: row['video_link'] || row['link'] || row['url'] || null,
-    video_date: row['date'] || row['publish_date'] || null,
-    views: parseFloat(row['views'] || row['video_views'] || '0') || 0,
-    likes: parseFloat(row['likes'] || '0') || 0,
-    comments: parseFloat(row['comments'] || '0') || 0,
-    shares: parseFloat(row['shares'] || '0') || 0,
+    // "Post time" has "Month DD" format (no year) — store as-is for display
+    video_date: row['post_time'] || row['date'] || row['publish_date'] || null,
+    // TikTok Studio exports use "Total views" / "Total likes" etc.
+    views:    parseFloat(row['total_views']    || row['views']    || row['video_views'] || '0') || 0,
+    likes:    parseFloat(row['total_likes']    || row['likes']    || '0') || 0,
+    comments: parseFloat(row['total_comments'] || row['comments'] || '0') || 0,
+    shares:   parseFloat(row['total_shares']   || row['shares']   || '0') || 0,
   })).filter(r => r.views > 0 || r.title)
+}
+
+// ─── TikTok Overview CSV (TikTok Studio → Overview tab) ─────────────────────
+// Real columns: Date, Video Views, Profile Views, Likes, Comments, Shares
+// Daily aggregate data — we sum all rows to get period totals
+export interface RawTikTokOverview {
+  total_views: number
+  total_interactions: number
+}
+
+export function parseTikTokOverviewCSV(text: string): RawTikTokOverview {
+  const result = Papa.parse<Record<string, string>>(text, {
+    header: true,
+    skipEmptyLines: true,
+    transformHeader: h => h.trim().toLowerCase().replace(/\s+/g, '_'),
+  })
+
+  let total_views = 0
+  let total_interactions = 0
+
+  for (const row of result.data) {
+    total_views += parseFloat(row['video_views'] || row['views'] || '0') || 0
+    const likes    = parseFloat(row['likes']    || '0') || 0
+    const comments = parseFloat(row['comments'] || '0') || 0
+    const shares   = parseFloat(row['shares']   || '0') || 0
+    total_interactions += likes + comments + shares
+  }
+
+  return { total_views, total_interactions }
 }

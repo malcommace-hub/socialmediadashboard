@@ -2,8 +2,8 @@
 import { useState } from 'react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { MonthSelector } from '@/components/ui/month-selector'
-import { parseInstagramCSV, parseLinkedInCSV, parseLinkedInXLS, parseLinkedInXLSWithDebug, parseTikTokCSV, type LinkedInDebugInfo } from '@/lib/parsers'
-import { upsertInstagramPosts, upsertLinkedInPosts, upsertTikTokVideos } from '@/lib/queries'
+import { parseInstagramCSV, parseLinkedInCSV, parseLinkedInXLS, parseLinkedInXLSWithDebug, parseTikTokCSV, parseTikTokOverviewCSV, type LinkedInDebugInfo } from '@/lib/parsers'
+import { upsertInstagramPosts, upsertLinkedInPosts, upsertTikTokVideos, upsertTikTokMonthly } from '@/lib/queries'
 import { currentYearMonth, monthLabel } from '@/lib/utils'
 import { Upload, CheckCircle, AlertCircle, Camera, Briefcase, Music2 } from 'lucide-react'
 
@@ -52,6 +52,7 @@ export default function UploadPage() {
   const [ig, setIg] = useState<UploadState>(emptyState)
   const [li, setLi] = useState<UploadState>(emptyState)
   const [tt, setTt] = useState<UploadState>(emptyState)
+  const [ttOv, setTtOv] = useState<UploadState>(emptyState)
 
   // ─── Instagram ───────────────────────────────
   async function handleInstagramFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -187,6 +188,33 @@ export default function UploadPage() {
     }
   }
 
+  // ─── TikTok Overview ─────────────────────────
+  async function handleTikTokOverviewFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setTtOv({ ...emptyState, status: 'parsing' })
+    try {
+      const text = await file.text()
+      const overview = parseTikTokOverviewCSV(text)
+      setTtOv({ status: 'preview', rowCount: 1, preview: [overview] })
+    } catch (err) {
+      setTtOv({ ...emptyState, status: 'error', error: String(err) })
+    }
+    e.target.value = ''
+  }
+
+  async function confirmTikTokOverview() {
+    setTtOv(s => ({ ...s, status: 'uploading' }))
+    try {
+      const { total_views, total_interactions } = ttOv.preview[0]
+      const { error } = await upsertTikTokMonthly({ year, month, total_views, total_interactions })
+      if (error) throw error
+      setTtOv(s => ({ ...s, status: 'done' }))
+    } catch (err) {
+      setTtOv(s => ({ ...s, status: 'error', error: String(err) }))
+    }
+  }
+
   return (
     <div className="p-8 max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-8">
@@ -230,10 +258,10 @@ export default function UploadPage() {
           showDebug
         />
 
-        {/* TikTok */}
+        {/* TikTok Content */}
         <UploadCard
           icon={<Music2 size={18} />}
-          title="TikTok"
+          title="TikTok — Top contenidos"
           subtitle="TikTok Studio → Contenido → seleccioná rango de fechas → Exportar CSV"
           accept=".csv"
           state={tt}
@@ -241,6 +269,19 @@ export default function UploadPage() {
           onConfirm={confirmTikTok}
           onReset={() => setTt(emptyState)}
           previewColumns={['title', 'views', 'likes', 'comments', 'shares']}
+        />
+
+        {/* TikTok Overview */}
+        <UploadCard
+          icon={<Music2 size={18} />}
+          title="TikTok — Resumen del mes (Overview)"
+          subtitle="TikTok Studio → Overview → seleccioná el mes → Exportar CSV"
+          accept=".csv"
+          state={ttOv}
+          onFile={handleTikTokOverviewFile}
+          onConfirm={confirmTikTokOverview}
+          onReset={() => setTtOv(emptyState)}
+          previewColumns={['total_views', 'total_interactions']}
         />
       </div>
 
