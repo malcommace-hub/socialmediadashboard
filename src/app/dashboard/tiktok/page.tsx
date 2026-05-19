@@ -26,6 +26,7 @@ export default function TikTokPage() {
   const [newFollowers, setNewFollowers] = useState('')
   const [saving, setSaving] = useState(false)
   const [newVideo, setNewVideo] = useState({ title: '', video_date: '', views: '', likes: '', comments: '', shares: '', permalink: '' })
+  const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -37,6 +38,7 @@ export default function TikTokPage() {
   }, [year, month])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => { setSelected(new Set()) }, [year, month])
 
   async function saveMonthly() {
     setSaving(true)
@@ -69,6 +71,19 @@ export default function TikTokPage() {
   async function handleDelete(id: string) {
     if (!confirm('¿Eliminar este video?')) return
     await deleteTikTokVideo(id)
+    await load()
+  }
+
+  function toggleSelect(id: string) {
+    setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n })
+  }
+  function toggleSelectAll(items: { id: string }[]) {
+    setSelected(s => s.size === items.length && items.length > 0 ? new Set() : new Set(items.map(x => x.id)))
+  }
+  async function handleDeleteSelected() {
+    if (!confirm(`¿Eliminar ${selected.size} elemento(s)? Esta acción no se puede deshacer.`)) return
+    await Promise.all([...selected].map(id => deleteTikTokVideo(id)))
+    setSelected(new Set())
     await load()
   }
 
@@ -148,10 +163,20 @@ export default function TikTokPage() {
           <Card>
             <div className="flex items-center justify-between mb-4">
               <CardTitle>Videos del mes ({videos.length})</CardTitle>
-              <button onClick={() => setShowAddForm(!showAddForm)}
-                className="flex items-center gap-1 text-xs bg-emerald-500 text-white px-3 py-1 rounded-lg font-medium hover:bg-emerald-400">
-                <Plus size={13} /> Agregar manual
-              </button>
+              <div className="flex gap-2">
+                {selected.size > 0 && (
+                  <button
+                    onClick={handleDeleteSelected}
+                    className="flex items-center gap-1 text-xs bg-red-500 text-white px-3 py-1 rounded-lg font-medium hover:bg-red-400"
+                  >
+                    <Trash2 size={13} /> Eliminar {selected.size}
+                  </button>
+                )}
+                <button onClick={() => setShowAddForm(!showAddForm)}
+                  className="flex items-center gap-1 text-xs bg-emerald-500 text-white px-3 py-1 rounded-lg font-medium hover:bg-emerald-400">
+                  <Plus size={13} /> Agregar manual
+                </button>
+              </div>
             </div>
 
             {showAddForm && (
@@ -195,6 +220,15 @@ export default function TikTokPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100">
+                    <th className="w-8 py-2 px-2">
+                      <input
+                        type="checkbox"
+                        className="rounded"
+                        ref={el => { if (el) el.indeterminate = selected.size > 0 && selected.size < sorted.length }}
+                        checked={sorted.length > 0 && selected.size === sorted.length}
+                        onChange={() => toggleSelectAll(sorted)}
+                      />
+                    </th>
                     <th className="text-left py-2 px-2 text-xs font-medium text-gray-400">Título</th>
                     <th className="text-left py-2 px-2 text-xs font-medium text-gray-400">Fecha</th>
                     <th className="text-right py-2 px-2 text-xs font-medium text-gray-400 cursor-pointer hover:text-gray-600" onClick={() => toggleSort('views')}>
@@ -215,10 +249,13 @@ export default function TikTokPage() {
                 </thead>
                 <tbody>
                   {sorted.length === 0 && (
-                    <tr><td colSpan={8} className="py-8 text-center text-gray-400 text-sm">No hay videos. Subí el CSV de TikTok Studio o agregá uno manual.</td></tr>
+                    <tr><td colSpan={9} className="py-8 text-center text-gray-400 text-sm">No hay videos. Subí el CSV de TikTok Studio o agregá uno manual.</td></tr>
                   )}
                   {sorted.map(v => (
                     <tr key={v.id} className="border-b border-gray-50 hover:bg-gray-50 group">
+                      <td className="py-2 px-2">
+                        <input type="checkbox" className="rounded" checked={selected.has(v.id)} onChange={() => toggleSelect(v.id)} />
+                      </td>
                       <td className="py-2 px-2 max-w-xs">
                         <div className="text-gray-700 truncate">{v.title || '(sin título)'}</div>
                         {v.is_manual && <Badge variant="manual">Manual</Badge>}

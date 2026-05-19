@@ -317,6 +317,12 @@ export function parseTikTokCSV(text: string): RawTikTokRow[] {
     transformHeader: h => h.trim().toLowerCase().replace(/\s+/g, '_'),
   })
 
+  // Reject if this looks like a daily overview CSV (no title, no links) — user needs per-video export
+  const hasVideoData = result.data.some(row => row['video_title'] || row['title'] || row['video_link'] || row['link'])
+  if (!hasVideoData && result.data.length > 0) {
+    throw new Error('Este archivo parece ser el resumen diario (Overview), no el export de videos individuales. En TikTok Studio, exportá desde la sección "Contenido" o "Videos" para obtener datos por video.')
+  }
+
   return result.data.map(row => ({
     title: row['video_title'] || row['title'] || '',
     permalink: row['video_link'] || row['link'] || row['url'] || null,

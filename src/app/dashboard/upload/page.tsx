@@ -16,6 +16,30 @@ interface UploadState {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   preview: any[]
   debug?: LinkedInDebugInfo
+  detectedMonth?: { year: number; month: number } | null
+}
+
+function detectMonthFromRows(rows: Array<{ post_date?: string | null; video_date?: string | null }>): { year: number; month: number } | null {
+  const counts = new Map<string, number>()
+  for (const row of rows) {
+    const d = (row as { post_date?: string | null }).post_date
+      ?? (row as { video_date?: string | null }).video_date
+      ?? null
+    if (!d) continue
+    const m = d.match(/^(\d{4})-(\d{2})/)
+    if (m) {
+      const key = `${m[1]}-${parseInt(m[2], 10)}`
+      counts.set(key, (counts.get(key) || 0) + 1)
+    }
+  }
+  if (counts.size === 0) return null
+  let best = '', bestCount = 0
+  for (const [key, count] of counts) {
+    if (count > bestCount) { best = key; bestCount = count }
+  }
+  if (bestCount < rows.length * 0.4) return null
+  const [yr, mo] = best.split('-').map(Number)
+  return { year: yr, month: mo }
 }
 
 const emptyState: UploadState = { status: 'idle', rowCount: 0, preview: [] }
@@ -37,7 +61,9 @@ export default function UploadPage() {
     try {
       const text = await file.text()
       const rows = parseInstagramCSV(text)
-      setIg({ status: 'preview', rowCount: rows.length, preview: rows })
+      const detected = detectMonthFromRows(rows)
+      if (detected) { setYear(detected.year); setMonth(detected.month) }
+      setIg({ status: 'preview', rowCount: rows.length, preview: rows, detectedMonth: detected })
     } catch {
       setIg({ ...emptyState, status: 'error', error: 'No se pudo parsear el CSV. Asegurate de exportarlo desde Meta Business Suite.' })
     }
@@ -80,7 +106,9 @@ export default function UploadPage() {
       if (isCSV) {
         const text = await file.text()
         const rows = parseLinkedInCSV(text)
-        setLi({ status: 'preview', rowCount: rows.length, preview: rows })
+        const detected = detectMonthFromRows(rows)
+        if (detected) { setYear(detected.year); setMonth(detected.month) }
+        setLi({ status: 'preview', rowCount: rows.length, preview: rows, detectedMonth: detected })
       } else {
         const binaryString = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader()
@@ -89,7 +117,9 @@ export default function UploadPage() {
           reader.readAsBinaryString(file)
         })
         const { rows, debug } = parseLinkedInXLSWithDebug(binaryString)
-        setLi({ status: 'preview', rowCount: rows.length, preview: rows, debug })
+        const detected = detectMonthFromRows(rows)
+        if (detected) { setYear(detected.year); setMonth(detected.month) }
+        setLi({ status: 'preview', rowCount: rows.length, preview: rows, debug, detectedMonth: detected })
       }
     } catch (err) {
       setLi({ ...emptyState, status: 'error', error: `No se pudo parsear el archivo: ${String(err)}` })
@@ -126,9 +156,11 @@ export default function UploadPage() {
     try {
       const text = await file.text()
       const rows = parseTikTokCSV(text)
-      setTt({ status: 'preview', rowCount: rows.length, preview: rows })
-    } catch {
-      setTt({ ...emptyState, status: 'error', error: 'No se pudo parsear el CSV de TikTok Studio.' })
+      const detected = detectMonthFromRows(rows)
+      if (detected) { setYear(detected.year); setMonth(detected.month) }
+      setTt({ status: 'preview', rowCount: rows.length, preview: rows, detectedMonth: detected })
+    } catch (err) {
+      setTt({ ...emptyState, status: 'error', error: String(err) })
     }
     e.target.value = ''
   }
@@ -202,7 +234,7 @@ export default function UploadPage() {
         <UploadCard
           icon={<Music2 size={18} />}
           title="TikTok"
-          subtitle="TikTok Studio → Análisis → Exportar CSV"
+          subtitle="TikTok Studio → Contenido → seleccioná rango de fechas → Exportar CSV"
           accept=".csv"
           state={tt}
           onFile={handleTikTokFile}
@@ -236,6 +268,7 @@ interface UploadCardProps {
   onReset: () => void
   previewColumns: string[]
   showDebug?: boolean
+  detectedMonth?: { year: number; month: number } | null
 }
 
 function UploadCard({ icon, title, subtitle, accept, state, onFile, onConfirm, onReset, previewColumns, showDebug }: UploadCardProps) {
@@ -290,6 +323,11 @@ function UploadCard({ icon, title, subtitle, accept, state, onFile, onConfirm, o
 
       {state.status === 'preview' && (
         <div>
+          {state.detectedMonth && (
+            <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-1.5 mb-2">
+              Mes detectado automáticamente: {new Date(state.detectedMonth.year, state.detectedMonth.month - 1).toLocaleString('es', { month: 'long', year: 'numeric' })}
+            </div>
+          )}
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm text-gray-600">
               <span className="font-semibold text-gray-900">{state.rowCount} registros</span> encontrados. Revisá antes de confirmar.
