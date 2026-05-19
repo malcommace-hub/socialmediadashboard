@@ -76,8 +76,15 @@ export default function UploadPage() {
     if (!file) return
     setLi({ ...emptyState, status: 'parsing' })
     try {
-      const buffer = await file.arrayBuffer()
-      const { rows, debug } = parseLinkedInXLSWithDebug(buffer)
+      // FileReader + readAsBinaryString is the most reliable cross-browser method
+      // for SheetJS (vs file.arrayBuffer() + Uint8Array which can silently fail)
+      const binaryString = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = (ev) => resolve(ev.target!.result as string)
+        reader.onerror = () => reject(new Error('Error leyendo el archivo'))
+        reader.readAsBinaryString(file)
+      })
+      const { rows, debug } = parseLinkedInXLSWithDebug(binaryString)
       setLi({ status: 'preview', rowCount: rows.length, preview: rows, debug })
     } catch (err) {
       setLi({ ...emptyState, status: 'error', error: `No se pudo parsear el XLS: ${String(err)}` })

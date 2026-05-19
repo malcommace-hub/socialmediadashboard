@@ -115,8 +115,10 @@ export interface LinkedInDebugInfo {
   columnIndices: Record<string, number>
 }
 
-function linkedInParseCore(buffer: ArrayBuffer): { rows: RawLinkedInRow[]; debug: LinkedInDebugInfo } {
-  const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' })
+function linkedInParseCore(data: ArrayBuffer | string): { rows: RawLinkedInRow[]; debug: LinkedInDebugInfo } {
+  const wb = typeof data === 'string'
+    ? XLSX.read(data, { type: 'binary' })
+    : XLSX.read(new Uint8Array(data), { type: 'array' })
 
   const sheetName = wb.SheetNames.includes('Todas las publicaciones')
     ? 'Todas las publicaciones'
@@ -226,8 +228,8 @@ export function parseLinkedInXLS(buffer: ArrayBuffer): RawLinkedInRow[] {
   return linkedInParseCore(buffer).rows
 }
 
-export function parseLinkedInXLSWithDebug(buffer: ArrayBuffer): { rows: RawLinkedInRow[]; debug: LinkedInDebugInfo } {
-  return linkedInParseCore(buffer)
+export function parseLinkedInXLSWithDebug(data: ArrayBuffer | string): { rows: RawLinkedInRow[]; debug: LinkedInDebugInfo } {
+  return linkedInParseCore(data)
 }
 
 // ─── TikTok CSV (TikTok Studio) ──────────────
