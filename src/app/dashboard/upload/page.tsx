@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { MonthSelector } from '@/components/ui/month-selector'
-import { parseInstagramCSV, parseLinkedInXLS, parseTikTokCSV } from '@/lib/parsers'
+import { parseInstagramCSV, parseLinkedInXLS, parseLinkedInXLSWithDebug, parseTikTokCSV, type LinkedInDebugInfo } from '@/lib/parsers'
 import { upsertInstagramPosts, upsertLinkedInPosts, upsertTikTokVideos } from '@/lib/queries'
 import { currentYearMonth, monthLabel } from '@/lib/utils'
 import { Upload, CheckCircle, AlertCircle, Camera, Briefcase, Music2 } from 'lucide-react'
@@ -15,6 +15,7 @@ interface UploadState {
   error?: string
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   preview: any[]
+  debug?: LinkedInDebugInfo
 }
 
 const emptyState: UploadState = { status: 'idle', rowCount: 0, preview: [] }
@@ -76,10 +77,10 @@ export default function UploadPage() {
     setLi({ ...emptyState, status: 'parsing' })
     try {
       const buffer = await file.arrayBuffer()
-      const rows = parseLinkedInXLS(buffer)
-      setLi({ status: 'preview', rowCount: rows.length, preview: rows })
-    } catch {
-      setLi({ ...emptyState, status: 'error', error: 'No se pudo parsear el XLS. Asegurate de exportarlo desde LinkedIn Analytics → Content.' })
+      const { rows, debug } = parseLinkedInXLSWithDebug(buffer)
+      setLi({ status: 'preview', rowCount: rows.length, preview: rows, debug })
+    } catch (err) {
+      setLi({ ...emptyState, status: 'error', error: `No se pudo parsear el XLS: ${String(err)}` })
     }
     e.target.value = ''
   }
@@ -182,6 +183,7 @@ export default function UploadPage() {
           onConfirm={confirmLinkedIn}
           onReset={() => setLi(emptyState)}
           previewColumns={['title', 'impressions', 'interactions', 'er_decimal']}
+          showDebug
         />
 
         {/* TikTok */}
@@ -221,9 +223,10 @@ interface UploadCardProps {
   onConfirm: () => void
   onReset: () => void
   previewColumns: string[]
+  showDebug?: boolean
 }
 
-function UploadCard({ icon, title, subtitle, accept, state, onFile, onConfirm, onReset, previewColumns }: UploadCardProps) {
+function UploadCard({ icon, title, subtitle, accept, state, onFile, onConfirm, onReset, previewColumns, showDebug }: UploadCardProps) {
   return (
     <Card>
       <div className="flex items-start justify-between mb-4">
@@ -258,6 +261,18 @@ function UploadCard({ icon, title, subtitle, accept, state, onFile, onConfirm, o
         <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
           <AlertCircle size={16} />
           {state.error}
+        </div>
+      )}
+
+      {state.status === 'preview' && showDebug && state.rowCount === 0 && state.debug && (
+        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs font-mono text-amber-900 space-y-1 overflow-x-auto">
+          <div className="font-semibold text-amber-800 mb-2">Diagnóstico (0 registros detectados)</div>
+          <div>Hojas: [{state.debug.sheetNames.join(', ')}] → usando &quot;{state.debug.usedSheet}&quot;</div>
+          <div>Filas totales: {state.debug.totalRows} | Fila de encabezado detectada: {state.debug.headerRowIdx}</div>
+          <div>Índices de columnas: {JSON.stringify(state.debug.columnIndices)}</div>
+          {state.debug.first4Rows.map((row, i) => (
+            <div key={i} className="truncate">Fila {i}: [{row.filter(Boolean).slice(0, 5).map(c => `"${c}"`).join(', ')}]</div>
+          ))}
         </div>
       )}
 

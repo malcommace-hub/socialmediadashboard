@@ -106,7 +106,16 @@ function parseDateMMDDYYYY(raw: string): string | null {
   return `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}`
 }
 
-export function parseLinkedInXLS(buffer: ArrayBuffer): RawLinkedInRow[] {
+export interface LinkedInDebugInfo {
+  sheetNames: string[]
+  usedSheet: string
+  totalRows: number
+  headerRowIdx: number
+  first4Rows: string[][]
+  columnIndices: Record<string, number>
+}
+
+function linkedInParseCore(buffer: ArrayBuffer): { rows: RawLinkedInRow[]; debug: LinkedInDebugInfo } {
   const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' })
 
   const sheetName = wb.SheetNames.includes('Todas las publicaciones')
@@ -114,28 +123,57 @@ export function parseLinkedInXLS(buffer: ArrayBuffer): RawLinkedInRow[] {
     : wb.SheetNames[0]
   const ws = wb.Sheets[sheetName]
 
-  const rows = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, raw: false, defval: '' })
-  if (rows.length < 2) return []
+  const rawRows = XLSX.utils.sheet_to_json<string[]>(ws, { header: 1, raw: false, defval: '' })
 
-  // Detect header row without relying on accented characters (encoding-safe).
-  // Header rows have many short non-empty cells; description rows have one very long cell.
+  const debug: LinkedInDebugInfo = {
+    sheetNames: wb.SheetNames,
+    usedSheet: sheetName,
+    totalRows: rawRows.length,
+    headerRowIdx: -1,
+    first4Rows: rawRows.slice(0, 4).map(r => r.map(c => String(c).slice(0, 80))),
+    columnIndices: {},
+  }
+
+  if (rawRows.length < 2) return { rows: [], debug }
+
+  // Normalize: lowercase + strip combining diacritics (encoding-agnostic)
+  const normalize = (s: string) =>
+    String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
+
+  // Detect header row: first row in the first 8 that has ≥3 non-empty cells
+  // AND where the joined text contains any known column keyword after normalization.
+  // This avoids picking a metadata/description row that happens to have many cells.
+  const KEYWORDS = ['impresion', 'impression', 'publicacion', 'publication', 'creacion', 'creation', 'enlace', 'link', 'titulo', 'title']
   let headerRowIdx = -1
-  for (let i = 0; i < Math.min(rows.length, 6); i++) {
-    const row = rows[i]
+  for (let i = 0; i < Math.min(rawRows.length, 8); i++) {
+    const row = rawRows[i]
     const nonEmpty = row.filter(c => String(c).trim().length > 0).length
-    const firstCellLen = String(row[0] ?? '').trim().length
-    if (nonEmpty >= 5 && firstCellLen < 120) {
+    if (nonEmpty < 3) continue
+    const joined = normalize(row.join(' '))
+    if (KEYWORDS.some(kw => joined.includes(kw))) {
       headerRowIdx = i
       break
     }
   }
-  if (headerRowIdx === -1 || headerRowIdx >= rows.length - 1) return []
 
-  // Normalize headers: lowercase + strip accents so matching is encoding-agnostic
-  const normalize = (s: string) =>
-    String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim()
+  // Fallback: structural detection (≥5 non-empty, first cell short)
+  if (headerRowIdx === -1) {
+    for (let i = 0; i < Math.min(rawRows.length, 8); i++) {
+      const row = rawRows[i]
+      const nonEmpty = row.filter(c => String(c).trim().length > 0).length
+      const firstCellLen = String(row[0] ?? '').trim().length
+      if (nonEmpty >= 5 && firstCellLen < 120) {
+        headerRowIdx = i
+        break
+      }
+    }
+  }
 
-  const headers = rows[headerRowIdx].map(normalize)
+  debug.headerRowIdx = headerRowIdx
+
+  if (headerRowIdx === -1 || headerRowIdx >= rawRows.length - 1) return { rows: [], debug }
+
+  const headers = rawRows[headerRowIdx].map(normalize)
 
   const idx = (names: string[]): number => {
     for (const name of names) {
@@ -156,10 +194,12 @@ export function parseLinkedInXLS(buffer: ArrayBuffer): RawLinkedInRow[] {
   const iShares      = idx(['veces compartido', 'shares'])
   const iER          = idx(['tasa de interaccion', 'engagement rate'])
 
+  debug.columnIndices = { iTitle, iPermalink, iDate, iImpressions, iClicks, iReactions, iComments, iShares, iER }
+
   const getNum = (row: string[], i: number): number =>
     i >= 0 ? parseFloat(String(row[i] ?? '').replace(',', '.')) || 0 : 0
 
-  return rows.slice(headerRowIdx + 1).map(row => {
+  const rows = rawRows.slice(headerRowIdx + 1).map(row => {
     const impressions  = getNum(row, iImpressions)
     const clicks       = getNum(row, iClicks)
     const reactions    = getNum(row, iReactions)
@@ -178,6 +218,16 @@ export function parseLinkedInXLS(buffer: ArrayBuffer): RawLinkedInRow[] {
 
     return { title, permalink, post_date, impressions, interactions, er_decimal }
   }).filter(r => r.title || r.impressions > 0 || r.permalink)
+
+  return { rows, debug }
+}
+
+export function parseLinkedInXLS(buffer: ArrayBuffer): RawLinkedInRow[] {
+  return linkedInParseCore(buffer).rows
+}
+
+export function parseLinkedInXLSWithDebug(buffer: ArrayBuffer): { rows: RawLinkedInRow[]; debug: LinkedInDebugInfo } {
+  return linkedInParseCore(buffer)
 }
 
 // ─── TikTok CSV (TikTok Studio) ──────────────
