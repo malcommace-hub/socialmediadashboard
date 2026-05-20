@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { MonthSelector } from '@/components/ui/month-selector'
-import { parseInstagramCSV, parseLinkedInCSV, parseLinkedInXLS, parseLinkedInXLSWithDebug, parseTikTokCSV, parseTikTokOverviewCSV, type LinkedInDebugInfo } from '@/lib/parsers'
+import { parseInstagramCSV, parseLinkedInCSV, parseLinkedInXLS, parseLinkedInXLSWithDebug, parseTikTokCSV, parseTikTokOverviewCSV, parseTikTokFollowerHistoryCSV, type LinkedInDebugInfo } from '@/lib/parsers'
 import { upsertInstagramPosts, upsertLinkedInPosts, upsertTikTokVideos, upsertTikTokMonthly } from '@/lib/queries'
 import { currentYearMonth, monthLabel } from '@/lib/utils'
 import { Upload, CheckCircle, AlertCircle, Camera, Briefcase, Music2 } from 'lucide-react'
@@ -53,6 +53,7 @@ export default function UploadPage() {
   const [li, setLi] = useState<UploadState>(emptyState)
   const [tt, setTt] = useState<UploadState>(emptyState)
   const [ttOv, setTtOv] = useState<UploadState>(emptyState)
+  const [ttFoll, setTtFoll] = useState<UploadState>(emptyState)
 
   // ─── Instagram ───────────────────────────────
   async function handleInstagramFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -215,6 +216,33 @@ export default function UploadPage() {
     }
   }
 
+  // ─── TikTok Follower History ─────────────────
+  async function handleTikTokFollowerFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setTtFoll({ ...emptyState, status: 'parsing' })
+    try {
+      const text = await file.text()
+      const data = parseTikTokFollowerHistoryCSV(text)
+      setTtFoll({ status: 'preview', rowCount: 1, preview: [data] })
+    } catch (err) {
+      setTtFoll({ ...emptyState, status: 'error', error: (err as { message?: string })?.message ?? String(err) })
+    }
+    e.target.value = ''
+  }
+
+  async function confirmTikTokFollowers() {
+    setTtFoll(s => ({ ...s, status: 'uploading' }))
+    try {
+      const { total_followers, new_followers } = ttFoll.preview[0]
+      const { error } = await upsertTikTokMonthly({ year, month, total_followers, new_followers })
+      if (error) throw error
+      setTtFoll(s => ({ ...s, status: 'done' }))
+    } catch (err) {
+      setTtFoll(s => ({ ...s, status: 'error', error: (err as { message?: string })?.message ?? String(err) }))
+    }
+  }
+
   return (
     <div className="p-8 max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-8">
@@ -282,6 +310,19 @@ export default function UploadPage() {
           onConfirm={confirmTikTokOverview}
           onReset={() => setTtOv(emptyState)}
           previewColumns={['total_views', 'total_interactions']}
+        />
+
+        {/* TikTok Followers */}
+        <UploadCard
+          icon={<Music2 size={18} />}
+          title="TikTok — Seguidores"
+          subtitle="TikTok Studio → Seguidores → Historial de seguidores → Exportar CSV"
+          accept=".csv"
+          state={ttFoll}
+          onFile={handleTikTokFollowerFile}
+          onConfirm={confirmTikTokFollowers}
+          onReset={() => setTtFoll(emptyState)}
+          previewColumns={['total_followers', 'new_followers', 'daysInExport']}
         />
       </div>
 

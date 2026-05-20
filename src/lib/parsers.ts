@@ -364,7 +364,34 @@ export function parseTikTokCSV(text: string, year?: number): RawTikTokRow[] {
   })).filter(r => r.views > 0 || r.title)
 }
 
-// ─── TikTok Overview CSV (TikTok Studio → Overview tab) ─────────────────────
+// ─── TikTok Follower History CSV (TikTok Studio → Followers) ────────────────
+// Columns: Date, Followers, Difference in followers from previous day
+// First row is typically the prior-month baseline; last row is the latest day.
+export interface RawTikTokFollowerHistory {
+  total_followers: number
+  new_followers: number   // last row followers − first row followers
+  daysInExport: number
+}
+
+export function parseTikTokFollowerHistoryCSV(text: string): RawTikTokFollowerHistory {
+  const result = Papa.parse<Record<string, string>>(text, {
+    header: true,
+    skipEmptyLines: true,
+    transformHeader: h => h.trim().toLowerCase().replace(/\s+/g, '_'),
+  })
+
+  const rows = result.data.filter(r => r['followers'] !== undefined && r['followers'] !== '')
+  if (rows.length === 0) throw new Error('No se encontraron datos de seguidores. Asegurate de exportar "Historial de seguidores" desde TikTok Studio.')
+
+  const firstFollowers = parseInt(rows[0]['followers'] || '0') || 0
+  const lastFollowers  = parseInt(rows[rows.length - 1]['followers'] || '0') || 0
+
+  return {
+    total_followers: lastFollowers,
+    new_followers: lastFollowers - firstFollowers,
+    daysInExport: rows.length,
+  }
+}
 // Real columns: Date, Video Views, Profile Views, Likes, Comments, Shares
 // Daily aggregate data — we sum all rows to get period totals
 export interface RawTikTokOverview {
