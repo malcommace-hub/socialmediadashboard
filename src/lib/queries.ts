@@ -145,6 +145,14 @@ export async function upsertYouTubeMonthly(data: { year: number; month: number; 
   return supabase.from('youtube_monthly').upsert(data, { onConflict: 'year,month' }).select().single()
 }
 
+export async function getYouTubeHistory() {
+  const monthly = await supabase.from('youtube_monthly').select('year,month,shorts_views').order('year').order('month')
+  return (monthly.data ?? []).map((m: Record<string, number>) => ({
+    year: m.year, month: m.month,
+    views: m.shorts_views ?? 0,
+  }))
+}
+
 // ─── Newsletter ──────────────────────────────
 
 export async function getNewsletterData(filter: MonthlyFilter) {

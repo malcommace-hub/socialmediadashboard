@@ -3,10 +3,13 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { MonthSelector } from '@/components/ui/month-selector'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { getTikTokStats, getTikTokHistory, deleteTikTokVideo, upsertTikTokMonthly, addTikTokVideoManual } from '@/lib/queries'
+import {
+  getTikTokStats, getTikTokHistory, deleteTikTokVideo, upsertTikTokMonthly,
+  addTikTokVideoManual, getYouTubeMonthly, upsertYouTubeMonthly, getYouTubeHistory,
+} from '@/lib/queries'
 import { formatNumber, currentYearMonth, monthLabel, shortMonthLabel, movingAvg, pctChange, formatPercent } from '@/lib/utils'
 import type { TikTokStats } from '@/lib/types'
-import { Trash2, ExternalLink, Plus, ChevronUp, ChevronDown, Upload } from 'lucide-react'
+import { Trash2, ExternalLink, Plus, ChevronUp, ChevronDown, Upload, PencilLine } from 'lucide-react'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LabelList, AreaChart, Area,
@@ -14,6 +17,7 @@ import {
 import Link from 'next/link'
 
 type HistoryPoint = Awaited<ReturnType<typeof getTikTokHistory>>[0]
+type YTHistoryPoint = Awaited<ReturnType<typeof getYouTubeHistory>>[0]
 
 function TrendBadge({ value, prev }: { value: number; prev: number | undefined }) {
   if (!prev) return <span className="text-gray-400 text-xs">—</span>
@@ -36,6 +40,9 @@ export default function TikTokPage() {
   const [month, setMonth] = useState(cm)
   const [stats, setStats] = useState<TikTokStats | null>(null)
   const [history, setHistory] = useState<HistoryPoint[]>([])
+  const [ytHistory, setYtHistory] = useState<YTHistoryPoint[]>([])
+  const [ytViews, setYtViews] = useState('')
+  const [ytSaved, setYtSaved] = useState(false)
   const [loading, setLoading] = useState(true)
   const [sortKey, setSortKey] = useState<SortKey>('views')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
@@ -49,12 +56,16 @@ export default function TikTokPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [data, hist] = await Promise.all([
+    const [data, hist, ytHist, ytMonthly] = await Promise.all([
       getTikTokStats({ year, month }),
       getTikTokHistory(),
+      getYouTubeHistory(),
+      getYouTubeMonthly({ year, month }),
     ])
     setStats(data)
     setHistory(hist)
+    setYtHistory(ytHist)
+    setYtViews(String(ytMonthly.data?.shorts_views ?? ''))
     setFollowers(String(data.monthly?.total_followers ?? ''))
     setNewFollowers(String(data.monthly?.new_followers ?? ''))
     setLoading(false)
@@ -68,6 +79,15 @@ export default function TikTokPage() {
     await upsertTikTokMonthly({ year, month, total_followers: parseInt(followers) || 0, new_followers: parseInt(newFollowers) || 0 })
     await load()
     setEditMonthly(false)
+    setSaving(false)
+  }
+
+  async function saveYouTube() {
+    setSaving(true)
+    await upsertYouTubeMonthly({ year, month, shorts_views: parseInt(ytViews) || 0 })
+    await load()
+    setYtSaved(true)
+    setTimeout(() => setYtSaved(false), 2000)
     setSaving(false)
   }
 
@@ -116,10 +136,17 @@ export default function TikTokPage() {
   }
 
   const histLast = history.slice(-12)
+  const ytHistLast = ytHistory.slice(-12)
+
   const curH = history.find(d => d.year === year && d.month === month)
   const prevH = (() => {
     const pm = month === 1 ? { y: year - 1, m: 12 } : { y: year, m: month - 1 }
     return history.find(d => d.year === pm.y && d.month === pm.m)
+  })()
+  const ytCurH = ytHistory.find(d => d.year === year && d.month === month)
+  const ytPrevH = (() => {
+    const pm = month === 1 ? { y: year - 1, m: 12 } : { y: year, m: month - 1 }
+    return ytHistory.find(d => d.year === pm.y && d.month === pm.m)
   })()
 
   const viewsChart = useMemo(() => {
@@ -142,6 +169,11 @@ export default function TikTokPage() {
     const ma = movingAvg(vals, 3)
     return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: +d.er.toFixed(2), ma: ma[i] ? +ma[i]!.toFixed(2) : null }))
   }, [histLast])
+  const ytChart = useMemo(() => {
+    const vals = ytHistLast.map(d => d.views)
+    const ma = movingAvg(vals, 3)
+    return ytHistLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: d.views, ma: ma[i] }))
+  }, [ytHistLast])
 
   const videos = stats?.videos ?? []
   const sorted = [...videos].sort((a, b) => {
@@ -153,11 +185,15 @@ export default function TikTokPage() {
     ? (sortDir === 'desc' ? <ChevronDown size={13} /> : <ChevronUp size={13} />)
     : null
 
+  const chartCardCls = 'bg-white rounded-2xl border border-gray-100 p-4 shadow-sm'
+
+  const ytCurrentViews = ytCurH?.views ?? 0
+
   return (
     <div className="p-8 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">TikTok</h1>
+          <h1 className="text-2xl font-bold text-gray-900">TikTok & Shorts</h1>
           <p className="text-gray-500 text-sm mt-0.5">{monthLabel(year, month)} · @weareseeds_</p>
         </div>
         <MonthSelector year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m) }} />
@@ -167,6 +203,12 @@ export default function TikTokPage() {
         <div className="flex items-center justify-center h-64 text-gray-400">Cargando datos...</div>
       ) : (
         <>
+          {/* ── TikTok ─────────────────────────────── */}
+          <div className="flex items-center gap-2 mb-4">
+            <div className="text-xs font-bold tracking-widest text-gray-400 uppercase">TikTok</div>
+            <div className="flex-1 h-px bg-gray-100" />
+          </div>
+
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
             {[
               { label: 'Impresiones', val: stats?.totalViews ?? 0, prev: prevH?.views },
@@ -188,8 +230,7 @@ export default function TikTokPage() {
 
           {histLast.length >= 1 && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-              {/* Impresiones / Views */}
-              <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+              <div className={chartCardCls}>
                 <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Impresiones / Views</div>
                 <ResponsiveContainer width="100%" height={180}>
                   <ComposedChart data={viewsChart} barCategoryGap="22%" margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
@@ -205,8 +246,7 @@ export default function TikTokPage() {
                 </ResponsiveContainer>
               </div>
 
-              {/* Interacciones */}
-              <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+              <div className={chartCardCls}>
                 <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Interacciones</div>
                 <ResponsiveContainer width="100%" height={180}>
                   <ComposedChart data={intChart} barCategoryGap="22%" margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
@@ -222,8 +262,7 @@ export default function TikTokPage() {
                 </ResponsiveContainer>
               </div>
 
-              {/* Engagement % (interacciones / views) */}
-              <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+              <div className={chartCardCls}>
                 <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Engagement %</div>
                 <ResponsiveContainer width="100%" height={180}>
                   <AreaChart data={erChart} margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
@@ -243,8 +282,7 @@ export default function TikTokPage() {
                 </ResponsiveContainer>
               </div>
 
-              {/* Nuevos seguidores */}
-              <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+              <div className={chartCardCls}>
                 <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Nuevos seguidores</div>
                 <ResponsiveContainer width="100%" height={180}>
                   <ComposedChart data={follChart} barCategoryGap="22%" margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
@@ -262,11 +300,12 @@ export default function TikTokPage() {
             </div>
           )}
 
+          {/* TikTok followers + videos */}
           <Card className="mb-6">
             <div className="flex items-center justify-between mb-3">
               <CardTitle>Seguidores del mes</CardTitle>
-              <button onClick={() => setEditMonthly(!editMonthly)} className="text-xs text-emerald-600 hover:text-emerald-700 font-medium">
-                {editMonthly ? 'Cancelar' : 'Editar'}
+              <button onClick={() => setEditMonthly(!editMonthly)} className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 font-medium">
+                <PencilLine size={12} /> {editMonthly ? 'Cancelar' : 'Editar'}
               </button>
             </div>
             {editMonthly ? (
@@ -300,15 +339,13 @@ export default function TikTokPage() {
             )}
           </Card>
 
-          <Card>
+          <Card className="mb-10">
             <div className="flex items-center justify-between mb-4">
               <CardTitle>Videos del mes ({videos.length})</CardTitle>
               <div className="flex gap-2">
                 {selected.size > 0 && (
-                  <button
-                    onClick={handleDeleteSelected}
-                    className="flex items-center gap-1 text-xs bg-red-500 text-white px-3 py-1 rounded-lg font-medium hover:bg-red-400"
-                  >
+                  <button onClick={handleDeleteSelected}
+                    className="flex items-center gap-1 text-xs bg-red-500 text-white px-3 py-1 rounded-lg font-medium hover:bg-red-400">
                     <Trash2 size={13} /> Eliminar {selected.size}
                   </button>
                 )}
@@ -365,13 +402,10 @@ export default function TikTokPage() {
                 <thead>
                   <tr className="border-b border-gray-100">
                     <th className="w-8 py-2 px-2">
-                      <input
-                        type="checkbox"
-                        className="rounded"
+                      <input type="checkbox" className="rounded"
                         ref={el => { if (el) el.indeterminate = selected.size > 0 && selected.size < sorted.length }}
                         checked={sorted.length > 0 && selected.size === sorted.length}
-                        onChange={() => toggleSelectAll(sorted)}
-                      />
+                        onChange={() => toggleSelectAll(sorted)} />
                     </th>
                     <th className="text-left py-2 px-2 text-xs font-medium text-gray-400">Título</th>
                     <th className="text-left py-2 px-2 text-xs font-medium text-gray-400">Fecha</th>
@@ -427,6 +461,56 @@ export default function TikTokPage() {
               </table>
             </div>
           </Card>
+
+          {/* ── YouTube Shorts ─────────────────────── */}
+          <div className="flex items-center gap-2 mb-4">
+            <div className="text-xs font-bold tracking-widest text-gray-400 uppercase">YouTube Shorts</div>
+            <div className="flex-1 h-px bg-gray-100" />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+            <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+              <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Views Shorts</div>
+              <div className="text-2xl font-bold text-gray-900">{formatNumber(ytCurrentViews)}</div>
+              <div className="flex gap-3 mt-1">
+                <span className="text-xs text-gray-400">
+                  <TrendBadge value={ytCurrentViews} prev={ytPrevH?.views} />
+                  <span className="ml-1">vs mes ant.</span>
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm lg:col-span-2 flex items-end gap-3">
+              <div className="flex-1">
+                <div className="text-xs font-medium text-gray-500 mb-1">Actualizar views del mes</div>
+                <input type="number" value={ytViews} onChange={e => setYtViews(e.target.value)}
+                  placeholder="0"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400" />
+              </div>
+              <button onClick={saveYouTube} disabled={saving}
+                className="bg-red-500 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-red-400 disabled:opacity-50 shrink-0">
+                {saving ? '...' : ytSaved ? '✓' : 'Guardar'}
+              </button>
+            </div>
+          </div>
+
+          {ytHistLast.length >= 1 && (
+            <div className={chartCardCls}>
+              <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">YouTube Shorts — Evolución de views</div>
+              <ResponsiveContainer width="100%" height={200}>
+                <ComposedChart data={ytChart} barCategoryGap="22%" margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} />
+                  <Tooltip formatter={(v, n) => [formatNumber(Number(v)), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                  <Bar dataKey="value" name="Views Shorts" fill="#fca5a5" radius={[4, 4, 0, 0]}>
+                    <LabelList dataKey="value" position="top" style={{ fontSize: 10, fontWeight: 700, fill: '#374151' }} formatter={(v: unknown) => formatNumber(Number(v))} />
+                  </Bar>
+                  <Line type="monotone" dataKey="ma" name="Media 3m" stroke="#ef4444" strokeDasharray="5 3" dot={false} strokeWidth={2} connectNulls />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </>
       )}
     </div>
