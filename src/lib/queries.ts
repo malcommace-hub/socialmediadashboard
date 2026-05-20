@@ -15,18 +15,29 @@ export async function getInstagramStats(filter: MonthlyFilter) {
   const posts: InstagramPost[] = postsRes.data ?? []
   const totalViews = posts.reduce((a, p) => a + (p.views ?? 0), 0)
   const totalImpressions = posts.reduce((a, p) => a + (p.impressions ?? 0), 0)
-  const totalInteractions = posts.reduce((a, p) => a + (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0) + (p.saves ?? 0), 0)
-  const avgER = computeAvgER(posts.map(p => ({ impressions: p.impressions, interactions: (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0) + (p.saves ?? 0) })))
 
-  // External collab views = manually added posts (is_manual=true) with type=Collab
-  // These come from influencer-hosted content and are added on top of the Meta app total
-  const externalCollabViews = posts
-    .filter(p => p.is_manual && p.type === 'Collab')
-    .reduce((a, p) => a + (p.views ?? 0), 0)
+  // External collab posts are hosted by external accounts — their stats are added on top of
+  // the Meta-exported monthly totals rather than being included in them
+  const externalCollabPosts = posts.filter(p => p.is_manual && p.type === 'Collab')
+  const externalCollabViews = externalCollabPosts.reduce((a, p) => a + (p.views ?? 0), 0)
+  const externalCollabInteractions = externalCollabPosts.reduce((a, p) => a + (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0) + (p.saves ?? 0), 0)
 
   const monthly = monthlyRes.data ?? null
   // Grand total = manual app number + external collab views added manually
   const grandTotalViews = (monthly?.total_views_manual ?? 0) + externalCollabViews
+
+  // Prefer stored monthly total; add collab interactions on top (same pattern as grandTotalViews)
+  const postInteractionsSum = posts.reduce((a, p) => a + (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0) + (p.saves ?? 0), 0)
+  const storedInteractions = (monthly as Record<string, number> | null)?.total_interactions ?? 0
+  const totalInteractions = storedInteractions > 0
+    ? storedInteractions + externalCollabInteractions
+    : postInteractionsSum
+
+  // Prefer stored avg_er from monthly; fall back to computed from posts
+  const storedAvgER = (monthly as Record<string, number | null> | null)?.avg_er
+  const avgER = storedAvgER != null
+    ? storedAvgER as number
+    : computeAvgER(posts.map(p => ({ impressions: p.impressions, interactions: (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0) + (p.saves ?? 0) })))
 
   return {
     monthly,
