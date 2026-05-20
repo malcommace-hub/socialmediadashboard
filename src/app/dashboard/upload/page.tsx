@@ -93,7 +93,7 @@ export default function UploadPage() {
       if (error) throw error
       setIg(s => ({ ...s, status: 'done' }))
     } catch (err) {
-      setIg(s => ({ ...s, status: 'error', error: String(err) }))
+      setIg(s => ({ ...s, status: 'error', error: (err as { message?: string })?.message ?? String(err) }))
     }
   }
 
@@ -123,7 +123,7 @@ export default function UploadPage() {
         setLi({ status: 'preview', rowCount: rows.length, preview: rows, debug, detectedMonth: detected })
       }
     } catch (err) {
-      setLi({ ...emptyState, status: 'error', error: `No se pudo parsear el archivo: ${String(err)}` })
+      setLi({ ...emptyState, status: 'error', error: `No se pudo parsear el archivo: ${(err as { message?: string })?.message ?? String(err)}` })
     }
     e.target.value = ''
   }
@@ -145,7 +145,7 @@ export default function UploadPage() {
       if (error) throw error
       setLi(s => ({ ...s, status: 'done' }))
     } catch (err) {
-      setLi(s => ({ ...s, status: 'error', error: String(err) }))
+      setLi(s => ({ ...s, status: 'error', error: (err as { message?: string })?.message ?? String(err) }))
     }
   }
 
@@ -156,7 +156,7 @@ export default function UploadPage() {
     setTt({ ...emptyState, status: 'parsing' })
     try {
       const text = await file.text()
-      const rows = parseTikTokCSV(text)
+      const rows = parseTikTokCSV(text, year)
       const detected = detectMonthFromRows(rows)
       if (detected) { setYear(detected.year); setMonth(detected.month) }
       setTt({ status: 'preview', rowCount: rows.length, preview: rows, detectedMonth: detected })
@@ -184,7 +184,7 @@ export default function UploadPage() {
       if (error) throw error
       setTt(s => ({ ...s, status: 'done' }))
     } catch (err) {
-      setTt(s => ({ ...s, status: 'error', error: String(err) }))
+      setTt(s => ({ ...s, status: 'error', error: (err as { message?: string })?.message ?? String(err) }))
     }
   }
 
@@ -211,7 +211,7 @@ export default function UploadPage() {
       if (error) throw error
       setTtOv(s => ({ ...s, status: 'done' }))
     } catch (err) {
-      setTtOv(s => ({ ...s, status: 'error', error: String(err) }))
+      setTtOv(s => ({ ...s, status: 'error', error: (err as { message?: string })?.message ?? String(err) }))
     }
   }
 
