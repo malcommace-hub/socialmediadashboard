@@ -211,7 +211,7 @@ export async function upsertObjective(data: { year: number; quarter: number; cha
 
 export async function getOverviewHistory() {
   const [igMonthly, liMonthly, liPosts, ttMonthly, ytMonthly, igPosts, nlEpisodes] = await Promise.all([
-    supabase.from('instagram_monthly').select('year,month,total_views_manual,total_reach_manual,new_followers,total_followers').order('year').order('month'),
+    supabase.from('instagram_monthly').select('year,month,total_views_manual,total_reach_manual,new_followers,total_followers,total_interactions,avg_er').order('year').order('month'),
     supabase.from('linkedin_monthly').select('year,month,new_followers,total_followers,total_impressions,total_interactions').order('year').order('month'),
     supabase.from('linkedin_posts').select('year,month,impressions,interactions,er_decimal'),
     supabase.from('tiktok_monthly').select('year,month,total_views,total_interactions,new_followers,total_followers').order('year').order('month'),
@@ -256,13 +256,15 @@ export async function getOverviewHistory() {
     // Prefer stored monthly totals for LinkedIn when post-level data isn't available
     const liImpressions = (li as Record<string, number>)?.total_impressions > 0 ? (li as Record<string, number>).total_impressions : liM.impressions
     const liInteractions = (li as Record<string, number>)?.total_interactions > 0 ? (li as Record<string, number>).total_interactions : liM.interactions
+    const igInteractions = (ig as Record<string,number>)?.total_interactions > 0 ? (ig as Record<string,number>).total_interactions : igM.interactions
+    const igER = (ig as Record<string,number | null>)?.avg_er != null ? (ig as Record<string,number>).avg_er : (igM.impressions > 0 ? (igM.interactions / igM.impressions) * 100 : 0)
     return {
       year: yr, month: mo,
       igImpressions: ig?.total_views_manual ?? 0,
-      igInteractions: igM.interactions,
+      igInteractions,
       igNewFollowers: ig?.new_followers ?? 0,
       igTotalFollowers: ig?.total_followers ?? 0,
-      igER: igM.impressions > 0 ? (igM.interactions / igM.impressions) * 100 : 0,
+      igER,
       liImpressions,
       liInteractions,
       liNewFollowers: li?.new_followers ?? 0,
@@ -291,18 +293,28 @@ export async function getInstagramHistory() {
     byMonth[k].interactions += (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0) + (p.saves ?? 0)
     byMonth[k].count++
   }
-  return (monthly.data ?? []).map((m: Record<string, number>) => {
-    const pm = byMonth[`${m.year}-${m.month}`] ?? { interactions: 0, impressions: 0, count: 0 }
+  const monthlyMap: Record<string, Record<string, number | null>> = {}
+  for (const m of monthly.data ?? []) {
+    monthlyMap[`${(m as Record<string,number>).year}-${(m as Record<string,number>).month}`] = m as Record<string, number | null>
+  }
+  const monthSet = new Set([...Object.keys(monthlyMap), ...Object.keys(byMonth)])
+  return Array.from(monthSet).sort().map(key => {
+    const [yr, mo] = key.split('-').map(Number)
+    const m = monthlyMap[key] ?? {}
+    const pm = byMonth[key] ?? { interactions: 0, impressions: 0, count: 0 }
+    // Prefer stored monthly totals; fall back to post-level aggregates
+    const interactions = ((m.total_interactions as number) ?? 0) > 0 ? (m.total_interactions as number) : pm.interactions
+    const er = m.avg_er != null ? (m.avg_er as number) : (pm.impressions > 0 ? (pm.interactions / pm.impressions) * 100 : 0)
     return {
-      year: m.year, month: m.month,
-      views: m.total_views_manual ?? 0,
-      reach: m.total_reach_manual ?? 0,
-      newFollowers: m.new_followers ?? 0,
-      totalFollowers: m.total_followers ?? 0,
-      interactions: pm.interactions,
-      er: pm.impressions > 0 ? (pm.interactions / pm.impressions) * 100 : 0,
+      year: yr, month: mo,
+      views: (m.total_views_manual as number) ?? 0,
+      reach: (m.total_reach_manual as number) ?? 0,
+      newFollowers: (m.new_followers as number) ?? 0,
+      totalFollowers: (m.total_followers as number) ?? 0,
+      interactions,
+      er,
     }
-  }).sort((a: {year:number;month:number}, b: {year:number;month:number}) => a.year - b.year || a.month - b.month)
+  })
 }
 
 export async function getLinkedInHistory() {
