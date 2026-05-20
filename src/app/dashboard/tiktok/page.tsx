@@ -9,7 +9,7 @@ import type { TikTokStats } from '@/lib/types'
 import { Trash2, ExternalLink, Plus, ChevronUp, ChevronDown, Upload } from 'lucide-react'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, LabelList,
+  ResponsiveContainer, LabelList, AreaChart, Area,
 } from 'recharts'
 import Link from 'next/link'
 
@@ -127,6 +127,21 @@ export default function TikTokPage() {
     const ma = movingAvg(vals, 3)
     return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: d.views, ma: ma[i] }))
   }, [histLast])
+  const intChart = useMemo(() => {
+    const vals = histLast.map(d => d.interactions)
+    const ma = movingAvg(vals, 3)
+    return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: d.interactions, ma: ma[i] }))
+  }, [histLast])
+  const follChart = useMemo(() => {
+    const vals = histLast.map(d => d.newFollowers)
+    const ma = movingAvg(vals, 3)
+    return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: d.newFollowers, ma: ma[i] }))
+  }, [histLast])
+  const erChart = useMemo(() => {
+    const vals = histLast.map(d => d.er)
+    const ma = movingAvg(vals, 3)
+    return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: +d.er.toFixed(2), ma: ma[i] ? +ma[i]!.toFixed(2) : null }))
+  }, [histLast])
 
   const videos = stats?.videos ?? []
   const sorted = [...videos].sort((a, b) => {
@@ -172,20 +187,78 @@ export default function TikTokPage() {
           </div>
 
           {histLast.length >= 1 && (
-            <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm mb-6">
-              <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">TikTok — Impresiones</div>
-              <ResponsiveContainer width="100%" height={200}>
-                <ComposedChart data={viewsChart} barCategoryGap="22%" margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} />
-                  <Tooltip formatter={(v, n) => [formatNumber(Number(v)), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                  <Bar dataKey="value" name="Views" fill="#d1d5db" radius={[4, 4, 0, 0]}>
-                    <LabelList dataKey="value" position="top" style={{ fontSize: 10, fontWeight: 700, fill: '#374151' }} formatter={(v: unknown) => formatNumber(Number(v))} />
-                  </Bar>
-                  <Line type="monotone" dataKey="ma" name="Media 3m" stroke="#6b7280" strokeDasharray="5 3" dot={false} strokeWidth={2} connectNulls />
-                </ComposedChart>
-              </ResponsiveContainer>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+              {/* Impresiones / Views */}
+              <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+                <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Impresiones / Views</div>
+                <ResponsiveContainer width="100%" height={180}>
+                  <ComposedChart data={viewsChart} barCategoryGap="22%" margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} />
+                    <Tooltip formatter={(v, n) => [formatNumber(Number(v)), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                    <Bar dataKey="value" name="Views" fill="#d1d5db" radius={[4, 4, 0, 0]}>
+                      <LabelList dataKey="value" position="top" style={{ fontSize: 10, fontWeight: 700, fill: '#374151' }} formatter={(v: unknown) => formatNumber(Number(v))} />
+                    </Bar>
+                    <Line type="monotone" dataKey="ma" name="Media 3m" stroke="#6b7280" strokeDasharray="5 3" dot={false} strokeWidth={2} connectNulls />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Interacciones */}
+              <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+                <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Interacciones</div>
+                <ResponsiveContainer width="100%" height={180}>
+                  <ComposedChart data={intChart} barCategoryGap="22%" margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} />
+                    <Tooltip formatter={(v, n) => [formatNumber(Number(v)), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                    <Bar dataKey="value" name="Interacciones" fill="#e5e7eb" radius={[4, 4, 0, 0]}>
+                      <LabelList dataKey="value" position="top" style={{ fontSize: 10, fontWeight: 700, fill: '#374151' }} formatter={(v: unknown) => formatNumber(Number(v))} />
+                    </Bar>
+                    <Line type="monotone" dataKey="ma" name="Media 3m" stroke="#4b5563" strokeDasharray="5 3" dot={false} strokeWidth={2} connectNulls />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Engagement % (interacciones / views) */}
+              <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+                <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Engagement %</div>
+                <ResponsiveContainer width="100%" height={180}>
+                  <AreaChart data={erChart} margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="ttErGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#374151" stopOpacity={0.15} />
+                        <stop offset="95%" stopColor="#374151" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => `${v}%`} axisLine={false} tickLine={false} width={36} />
+                    <Tooltip formatter={(v, n) => [`${Number(v).toFixed(2)}%`, n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                    <Area type="monotone" dataKey="value" name="ER%" stroke="#374151" fill="url(#ttErGrad)" strokeWidth={2} dot={{ r: 3, fill: '#374151', strokeWidth: 0 }} />
+                    <Line type="monotone" dataKey="ma" name="Media 3m" stroke="#374151" strokeDasharray="5 3" dot={false} strokeWidth={1.5} connectNulls strokeOpacity={0.5} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Nuevos seguidores */}
+              <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
+                <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Nuevos seguidores</div>
+                <ResponsiveContainer width="100%" height={180}>
+                  <ComposedChart data={follChart} barCategoryGap="22%" margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} />
+                    <Tooltip formatter={(v, n) => [formatNumber(Number(v)), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                    <Bar dataKey="value" name="Nuevos seguidores" fill="#d1d5db" radius={[4, 4, 0, 0]}>
+                      <LabelList dataKey="value" position="top" style={{ fontSize: 10, fontWeight: 700, fill: '#374151' }} formatter={(v: unknown) => formatNumber(Number(v))} />
+                    </Bar>
+                    <Line type="monotone" dataKey="ma" name="Media 3m" stroke="#6b7280" strokeDasharray="5 3" dot={false} strokeWidth={2} connectNulls />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           )}
 

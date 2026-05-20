@@ -1,15 +1,14 @@
 'use client'
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { StatCard } from '@/components/ui/stat-card'
 import { MonthSelector } from '@/components/ui/month-selector'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { getLinkedInStats, getLinkedInHistory, deleteLinkedInPost, upsertLinkedInMonthly } from '@/lib/queries'
+import { getLinkedInStats, getLinkedInHistory, deleteLinkedInPost, upsertLinkedInMonthlyTotals } from '@/lib/queries'
 import { formatNumber, formatPercent, currentYearMonth, monthLabel, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
 import type { LinkedInStats } from '@/lib/types'
-import { Trash2, ExternalLink, ChevronUp, ChevronDown, Upload, Plus } from 'lucide-react'
+import { Trash2, ExternalLink, ChevronUp, ChevronDown, Upload, Plus, PencilLine } from 'lucide-react'
 import {
-  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LabelList, AreaChart, Area,
 } from 'recharts'
 import Link from 'next/link'
@@ -43,6 +42,9 @@ export default function LinkedInPage() {
   const [editMonthly, setEditMonthly] = useState(false)
   const [followers, setFollowers] = useState('')
   const [newFollowers, setNewFollowers] = useState('')
+  const [totalImpressions, setTotalImpressions] = useState('')
+  const [totalInteractions, setTotalInteractions] = useState('')
+  const [avgER, setAvgER] = useState('')
   const [saving, setSaving] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
@@ -56,6 +58,11 @@ export default function LinkedInPage() {
     setHistory(hist)
     setFollowers(String(data.monthly?.total_followers ?? ''))
     setNewFollowers(String(data.monthly?.new_followers ?? ''))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const m = data.monthly as any
+    setTotalImpressions(String(m?.total_impressions ?? ''))
+    setTotalInteractions(String(m?.total_interactions ?? ''))
+    setAvgER(String(m?.avg_er ?? ''))
     setLoading(false)
   }, [year, month])
 
@@ -64,7 +71,14 @@ export default function LinkedInPage() {
 
   async function saveMonthly() {
     setSaving(true)
-    await upsertLinkedInMonthly({ year, month, total_followers: parseInt(followers) || 0, new_followers: parseInt(newFollowers) || 0 })
+    await upsertLinkedInMonthlyTotals({
+      year, month,
+      total_followers: parseInt(followers) || 0,
+      new_followers: parseInt(newFollowers) || 0,
+      total_impressions: parseInt(totalImpressions) || undefined,
+      total_interactions: parseInt(totalInteractions) || undefined,
+      avg_er: avgER !== '' ? parseFloat(avgER) : null,
+    })
     await load()
     setEditMonthly(false)
     setSaving(false)
@@ -108,19 +122,7 @@ export default function LinkedInPage() {
     ? (sortDir === 'desc' ? <ChevronDown size={13} /> : <ChevronUp size={13} />)
     : null
 
-  // Historical chart data (last 12 months)
   const histLast = history.slice(-12)
-  const impChart = useMemo(() => {
-    const vals = histLast.map(d => d.impressions)
-    const ma = movingAvg(vals, 3)
-    return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: d.impressions, ma: ma[i] }))
-  }, [histLast])
-  const erChart = useMemo(() => {
-    const vals = histLast.map(d => d.er)
-    const ma = movingAvg(vals, 3)
-    return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: +d.er.toFixed(2), ma: ma[i] ? +ma[i]!.toFixed(2) : null }))
-  }, [histLast])
-
   const curH = history.find(d => d.year === year && d.month === month)
   const prevH = (() => {
     const pm = month === 1 ? { y: year - 1, m: 12 } : { y: year, m: month - 1 }
@@ -132,7 +134,33 @@ export default function LinkedInPage() {
     return history.find(d => d.year === y && d.month === m)
   })()
 
+  const impChart = useMemo(() => {
+    const vals = histLast.map(d => d.impressions)
+    const ma = movingAvg(vals, 3)
+    return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: d.impressions, ma: ma[i] }))
+  }, [histLast])
+  const intChart = useMemo(() => {
+    const vals = histLast.map(d => d.interactions)
+    const ma = movingAvg(vals, 3)
+    return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: d.interactions, ma: ma[i] }))
+  }, [histLast])
+  const follChart = useMemo(() => {
+    const vals = histLast.map(d => d.newFollowers)
+    const ma = movingAvg(vals, 3)
+    return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: d.newFollowers, ma: ma[i] }))
+  }, [histLast])
+  const erChart = useMemo(() => {
+    const vals = histLast.map(d => d.er)
+    const ma = movingAvg(vals, 3)
+    return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: +d.er.toFixed(2), ma: ma[i] ? +ma[i]!.toFixed(2) : null }))
+  }, [histLast])
+
   const chartCardCls = 'bg-white rounded-2xl border border-gray-100 p-4 shadow-sm'
+
+  // For KPI cards, prefer history-derived value for the selected month
+  const kpiImpressions = curH?.impressions ?? stats?.totalImpressions ?? 0
+  const kpiInteractions = curH?.interactions ?? stats?.totalInteractions ?? 0
+  const kpiER = curH?.er ?? stats?.avgER ?? 0
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -151,9 +179,9 @@ export default function LinkedInPage() {
           {/* KPI cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             {[
-              { label: 'Impresiones', val: stats?.totalImpressions ?? 0, prev: prevH?.impressions, qPrev: qPrevH?.impressions, fmt: formatNumber },
-              { label: 'Interacciones', val: stats?.totalInteractions ?? 0, prev: prevH?.interactions, qPrev: qPrevH?.interactions, fmt: formatNumber },
-              { label: 'Engagement %', val: stats?.avgER ?? 0, prev: prevH?.er, qPrev: qPrevH?.er, fmt: (v: number) => formatPercent(v) },
+              { label: 'Impresiones', val: kpiImpressions, prev: prevH?.impressions, qPrev: qPrevH?.impressions, fmt: formatNumber },
+              { label: 'Interacciones', val: kpiInteractions, prev: prevH?.interactions, qPrev: qPrevH?.interactions, fmt: formatNumber },
+              { label: 'Engagement %', val: kpiER, prev: prevH?.er, qPrev: qPrevH?.er, fmt: (v: number) => formatPercent(v) },
               { label: 'Nuevos seguidores', val: stats?.monthly?.new_followers ?? 0, prev: prevH?.newFollowers, qPrev: qPrevH?.newFollowers, fmt: formatNumber },
             ].map(({ label, val, prev, qPrev, fmt }) => (
               <div key={label} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
@@ -173,13 +201,14 @@ export default function LinkedInPage() {
             ))}
           </div>
 
-          {/* Historical charts */}
+          {/* Historical charts — 2×2 grid */}
           {histLast.length >= 1 && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+              {/* Impresiones */}
               <div className={chartCardCls}>
                 <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Impresiones</div>
-                <ResponsiveContainer width="100%" height={200}>
-                  <ComposedChart data={impChart} margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
+                <ResponsiveContainer width="100%" height={180}>
+                  <ComposedChart data={impChart} barCategoryGap="22%" margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                     <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} />
@@ -192,9 +221,27 @@ export default function LinkedInPage() {
                 </ResponsiveContainer>
               </div>
 
+              {/* Interacciones */}
+              <div className={chartCardCls}>
+                <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Interacciones</div>
+                <ResponsiveContainer width="100%" height={180}>
+                  <ComposedChart data={intChart} barCategoryGap="22%" margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} />
+                    <Tooltip formatter={(v, n) => [formatNumber(Number(v)), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                    <Bar dataKey="value" name="Interacciones" fill="#93c5fd" radius={[4, 4, 0, 0]}>
+                      <LabelList dataKey="value" position="top" style={{ fontSize: 10, fontWeight: 700, fill: '#374151' }} formatter={(v: unknown) => formatNumber(Number(v))} />
+                    </Bar>
+                    <Line type="monotone" dataKey="ma" name="Media 3m" stroke="#2563eb" strokeDasharray="5 3" dot={false} strokeWidth={2} connectNulls />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Engagement % */}
               <div className={chartCardCls}>
                 <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Engagement %</div>
-                <ResponsiveContainer width="100%" height={200}>
+                <ResponsiveContainer width="100%" height={180}>
                   <AreaChart data={erChart} margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
                     <defs>
                       <linearGradient id="liErGrad" x1="0" y1="0" x2="0" y2="1">
@@ -211,37 +258,83 @@ export default function LinkedInPage() {
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
+
+              {/* Nuevos seguidores */}
+              <div className={chartCardCls}>
+                <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Nuevos seguidores</div>
+                <ResponsiveContainer width="100%" height={180}>
+                  <ComposedChart data={follChart} barCategoryGap="22%" margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} />
+                    <Tooltip formatter={(v, n) => [formatNumber(Number(v)), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                    <Bar dataKey="value" name="Nuevos seguidores" fill="#dbeafe" radius={[4, 4, 0, 0]}>
+                      <LabelList dataKey="value" position="top" style={{ fontSize: 10, fontWeight: 700, fill: '#374151' }} formatter={(v: unknown) => formatNumber(Number(v))} />
+                    </Bar>
+                    <Line type="monotone" dataKey="ma" name="Media 3m" stroke="#1d4ed8" strokeDasharray="5 3" dot={false} strokeWidth={2} connectNulls />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
             </div>
           )}
 
-          {/* Followers card */}
+          {/* Monthly data card */}
           <Card className="mb-6">
             <div className="flex items-center justify-between mb-3">
-              <CardTitle>Seguidores del mes</CardTitle>
-              <button onClick={() => setEditMonthly(!editMonthly)} className="text-xs text-emerald-600 hover:text-emerald-700 font-medium">
-                {editMonthly ? 'Cancelar' : 'Editar'}
+              <CardTitle>Totales del mes</CardTitle>
+              <button onClick={() => setEditMonthly(!editMonthly)} className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 font-medium">
+                <PencilLine size={12} /> {editMonthly ? 'Cancelar' : 'Editar'}
               </button>
             </div>
             {editMonthly ? (
-              <div className="flex gap-3 items-end">
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">Total seguidores</label>
+                  <label className="text-xs text-gray-500 block mb-1">Impresiones totales</label>
+                  <input type="number" value={totalImpressions} onChange={e => setTotalImpressions(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Interacciones totales</label>
+                  <input type="number" value={totalInteractions} onChange={e => setTotalInteractions(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Engagement % (promedio)</label>
+                  <input type="number" step="0.01" value={avgER} onChange={e => setAvgER(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">Seguidores totales</label>
                   <input type="number" value={followers} onChange={e => setFollowers(e.target.value)}
-                    className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
                 <div>
                   <label className="text-xs text-gray-500 block mb-1">Nuevos seguidores</label>
                   <input type="number" value={newFollowers} onChange={e => setNewFollowers(e.target.value)}
-                    className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
-                <button onClick={saveMonthly} disabled={saving}
-                  className="bg-emerald-500 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-emerald-400 disabled:opacity-50">
-                  {saving ? 'Guardando...' : 'Guardar'}
-                </button>
+                <div className="flex items-end">
+                  <button onClick={saveMonthly} disabled={saving}
+                    className="w-full bg-blue-600 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-blue-500 disabled:opacity-50">
+                    {saving ? 'Guardando...' : 'Guardar'}
+                  </button>
+                </div>
               </div>
             ) : (
-              <div className="flex gap-8">
+              <div className="flex flex-wrap gap-8">
                 <div>
+                  <div className="text-2xl font-bold">{formatNumber(kpiImpressions)}</div>
+                  <div className="text-xs text-gray-400">Impresiones</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold">{formatNumber(kpiInteractions)}</div>
+                  <div className="text-xs text-gray-400">Interacciones</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-blue-600">{kpiER > 0 ? formatPercent(kpiER) : '—'}</div>
+                  <div className="text-xs text-gray-400">Engagement %</div>
+                </div>
+                <div className="border-l border-gray-100 pl-8">
                   <div className="text-2xl font-bold">{formatNumber(stats?.monthly?.total_followers ?? 0)}</div>
                   <div className="text-xs text-gray-400">Seguidores totales</div>
                 </div>

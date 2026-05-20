@@ -212,7 +212,7 @@ export async function upsertObjective(data: { year: number; quarter: number; cha
 export async function getOverviewHistory() {
   const [igMonthly, liMonthly, liPosts, ttMonthly, ytMonthly, igPosts, nlEpisodes] = await Promise.all([
     supabase.from('instagram_monthly').select('year,month,total_views_manual,total_reach_manual,new_followers,total_followers').order('year').order('month'),
-    supabase.from('linkedin_monthly').select('year,month,new_followers,total_followers').order('year').order('month'),
+    supabase.from('linkedin_monthly').select('year,month,new_followers,total_followers,total_impressions,total_interactions').order('year').order('month'),
     supabase.from('linkedin_posts').select('year,month,impressions,interactions,er_decimal'),
     supabase.from('tiktok_monthly').select('year,month,total_views,total_interactions,new_followers,total_followers').order('year').order('month'),
     supabase.from('youtube_monthly').select('year,month,shorts_views').order('year').order('month'),
@@ -319,18 +319,19 @@ export async function getLinkedInHistory() {
     byMonth[k].erSum += p.er_decimal ?? 0
     byMonth[k].count++
   }
-  return (monthly.data ?? []).map((m: Record<string, number>) => {
+  return (monthly.data ?? []).map((m: Record<string, number | null>) => {
     const pm = byMonth[`${m.year}-${m.month}`] ?? { impressions: 0, interactions: 0, erSum: 0, count: 0 }
-    // Prefer stored monthly totals (manual entry) over post-level sums
-    const impressions = m.total_impressions > 0 ? m.total_impressions : pm.impressions
-    const interactions = m.total_interactions > 0 ? m.total_interactions : pm.interactions
+    const impressions = (m.total_impressions ?? 0) > 0 ? (m.total_impressions as number) : pm.impressions
+    const interactions = (m.total_interactions ?? 0) > 0 ? (m.total_interactions as number) : pm.interactions
+    // Prefer manually stored avg_er; fall back to computing from post-level data
+    const er = m.avg_er != null ? (m.avg_er as number) : (pm.count > 0 ? (pm.erSum / pm.count) * 100 : 0)
     return {
-      year: m.year, month: m.month,
+      year: m.year as number, month: m.month as number,
       impressions,
       interactions,
-      newFollowers: m.new_followers ?? 0,
-      totalFollowers: m.total_followers ?? 0,
-      er: pm.count > 0 ? (pm.erSum / pm.count) * 100 : 0,
+      newFollowers: (m.new_followers as number) ?? 0,
+      totalFollowers: (m.total_followers as number) ?? 0,
+      er,
     }
   }).sort((a: {year:number;month:number}, b: {year:number;month:number}) => a.year - b.year || a.month - b.month)
 }
@@ -339,6 +340,7 @@ export async function upsertLinkedInMonthlyTotals(data: {
   year: number; month: number
   total_followers?: number; new_followers?: number
   total_impressions?: number; total_interactions?: number
+  avg_er?: number | null
 }) {
   return supabase.from('linkedin_monthly').upsert(data, { onConflict: 'year,month' }).select().single()
 }
@@ -351,6 +353,7 @@ export async function getTikTokHistory() {
     interactions: m.total_interactions ?? 0,
     newFollowers: m.new_followers ?? 0,
     totalFollowers: m.total_followers ?? 0,
+    er: (m.total_views ?? 0) > 0 ? ((m.total_interactions ?? 0) / (m.total_views ?? 1)) * 100 : 0,
   })).sort((a: {year:number;month:number}, b: {year:number;month:number}) => a.year - b.year || a.month - b.month)
 }
 
