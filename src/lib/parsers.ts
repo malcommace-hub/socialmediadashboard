@@ -155,11 +155,10 @@ export function parseLinkedInCSV(text: string): RawLinkedInRow[] {
 
   return allRows.slice(headerIdx + 1).map(row => {
     const impressions  = getNum(row, iImpressions)
-    const clicks       = getNum(row, iClicks)
     const reactions    = getNum(row, iReactions)
     const comments     = getNum(row, iComments)
     const shares       = getNum(row, iShares)
-    const interactions = clicks + reactions + comments + shares
+    const interactions = reactions + comments + shares
 
     let er_decimal = getNum(row, iER)
     if (er_decimal > 1) er_decimal = er_decimal / 100
@@ -269,11 +268,10 @@ function linkedInParseCore(data: ArrayBuffer | string): { rows: RawLinkedInRow[]
 
   const rows = rawRows.slice(headerRowIdx + 1).map(row => {
     const impressions  = getNum(row, iImpressions)
-    const clicks       = getNum(row, iClicks)
     const reactions    = getNum(row, iReactions)
     const comments     = getNum(row, iComments)
     const shares       = getNum(row, iShares)
-    const interactions = clicks + reactions + comments + shares
+    const interactions = reactions + comments + shares
 
     let er_decimal = getNum(row, iER)
     if (er_decimal > 1) er_decimal = er_decimal / 100

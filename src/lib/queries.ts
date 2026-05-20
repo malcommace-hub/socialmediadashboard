@@ -319,21 +319,29 @@ export async function getLinkedInHistory() {
     byMonth[k].erSum += p.er_decimal ?? 0
     byMonth[k].count++
   }
-  return (monthly.data ?? []).map((m: Record<string, number | null>) => {
-    const pm = byMonth[`${m.year}-${m.month}`] ?? { impressions: 0, interactions: 0, erSum: 0, count: 0 }
-    const impressions = (m.total_impressions ?? 0) > 0 ? (m.total_impressions as number) : pm.impressions
-    const interactions = (m.total_interactions ?? 0) > 0 ? (m.total_interactions as number) : pm.interactions
-    // Prefer manually stored avg_er; fall back to computing from post-level data
+  // Index monthly rows by key for fast lookup
+  const monthlyMap: Record<string, Record<string, number | null>> = {}
+  for (const m of monthly.data ?? []) {
+    monthlyMap[`${(m as Record<string,number>).year}-${(m as Record<string,number>).month}`] = m as Record<string, number | null>
+  }
+  // Include all months that appear in either table
+  const monthSet = new Set([...Object.keys(monthlyMap), ...Object.keys(byMonth)])
+  return Array.from(monthSet).sort().map(key => {
+    const [yr, mo] = key.split('-').map(Number)
+    const m = monthlyMap[key] ?? {}
+    const pm = byMonth[key] ?? { impressions: 0, interactions: 0, erSum: 0, count: 0 }
+    const impressions = ((m.total_impressions as number) ?? 0) > 0 ? (m.total_impressions as number) : pm.impressions
+    const interactions = ((m.total_interactions as number) ?? 0) > 0 ? (m.total_interactions as number) : pm.interactions
     const er = m.avg_er != null ? (m.avg_er as number) : (pm.count > 0 ? (pm.erSum / pm.count) * 100 : 0)
     return {
-      year: m.year as number, month: m.month as number,
+      year: yr, month: mo,
       impressions,
       interactions,
       newFollowers: (m.new_followers as number) ?? 0,
       totalFollowers: (m.total_followers as number) ?? 0,
       er,
     }
-  }).sort((a: {year:number;month:number}, b: {year:number;month:number}) => a.year - b.year || a.month - b.month)
+  })
 }
 
 export async function upsertLinkedInMonthlyTotals(data: {
