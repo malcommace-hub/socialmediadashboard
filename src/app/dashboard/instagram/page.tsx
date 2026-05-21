@@ -457,6 +457,25 @@ export default function InstagramPage() {
     return null
   }, [typeBreakdown])
 
+  const bestDayToPost = useMemo(() => {
+    const DAY_NAMES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
+    const eligible = regularPosts.filter(p => p.post_date && p.type !== 'Story' && p.impressions > 0)
+    if (eligible.length < 10) return null
+    const byDay: Record<number, { totalER: number; count: number }> = {}
+    for (const p of eligible) {
+      const day = new Date(p.post_date! + 'T12:00:00Z').getUTCDay()
+      if (!byDay[day]) byDay[day] = { totalER: 0, count: 0 }
+      byDay[day].totalER += erForPost(p)
+      byDay[day].count++
+    }
+    const days = Object.entries(byDay)
+      .map(([d, v]) => ({ day: +d, avgER: v.count > 0 ? v.totalER / v.count : 0, count: v.count }))
+      .filter(d => d.count >= 2)
+    if (!days.length) return null
+    const best = days.reduce((b, d) => d.avgER > b.avgER ? d : b)
+    return { dayName: DAY_NAMES[best.day], avgER: best.avgER }
+  }, [regularPosts])
+
   const freqBadge = useMemo(() => {
     const withDate = regularPosts.filter(p => p.post_date)
     if (!withDate.length) return null
@@ -513,15 +532,22 @@ export default function InstagramPage() {
               {summaryText}
             </div>
           )}
-          {freqBadge !== null && (
-            <div className={`presentation-hide inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-semibold mb-5 ${
-              freqBadge >= 3 ? 'bg-emerald-100 text-emerald-700' :
-              freqBadge >= 1 ? 'bg-amber-100 text-amber-700' :
-              'bg-red-100 text-red-700'
-            }`}>
-              ~{freqBadge.toFixed(1)} posts/sem
-            </div>
-          )}
+          <div className="flex flex-wrap items-center gap-2 mb-5">
+            {freqBadge !== null && (
+              <div className={`presentation-hide inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-semibold ${
+                freqBadge >= 3 ? 'bg-emerald-100 text-emerald-700' :
+                freqBadge >= 1 ? 'bg-amber-100 text-amber-700' :
+                'bg-red-100 text-red-700'
+              }`}>
+                ~{freqBadge.toFixed(1)} posts/sem
+              </div>
+            )}
+            {bestDayToPost && (
+              <div className="inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-semibold bg-violet-50 text-violet-700">
+                📅 Mejor día: {bestDayToPost.dayName} (ER {bestDayToPost.avgER.toFixed(1)}% promedio)
+              </div>
+            )}
+          </div>
 
           {/* KPI trend cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
