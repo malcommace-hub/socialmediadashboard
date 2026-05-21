@@ -8,6 +8,7 @@ import {
   ResponsiveContainer, LabelList,
 } from 'recharts'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { MonthScoreCard } from '@/components/dashboard/MonthScoreCard'
 
 type HistoryPoint = Awaited<ReturnType<typeof getOverviewHistory>>[0]
 
@@ -267,6 +268,9 @@ export default function OverviewPage() {
               </button>
             ))}
           </div>
+
+          {/* Score del mes */}
+          {current && <MonthScoreCard current={current} history={history} />}
 
           {/* KPI cards */}
           <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">

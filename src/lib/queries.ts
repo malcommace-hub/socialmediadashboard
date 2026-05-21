@@ -258,12 +258,13 @@ export async function getOverviewHistory() {
     liByMonth[k].erSum += p.er_decimal ?? 0
     liByMonth[k].count++
   }
-  const igByMonth: Record<string, { interactions: number; impressions: number }> = {}
+  const igByMonth: Record<string, { interactions: number; impressions: number; count: number }> = {}
   for (const p of igPosts.data ?? []) {
     const k = `${p.year}-${p.month}`
-    if (!igByMonth[k]) igByMonth[k] = { interactions: 0, impressions: 0 }
+    if (!igByMonth[k]) igByMonth[k] = { interactions: 0, impressions: 0, count: 0 }
     igByMonth[k].impressions += p.impressions ?? p.views ?? 0
     igByMonth[k].interactions += (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0) + (p.saves ?? 0)
+    igByMonth[k].count++
   }
   const nlByMonth: Record<string, number> = {}
   for (const ep of nlEpisodes.data ?? []) {
@@ -305,6 +306,8 @@ export async function getOverviewHistory() {
       ttTotalFollowers: tt?.total_followers ?? 0,
       ytViews: yt?.shorts_views ?? 0,
       newsletterViews: nlByMonth[key] ?? 0,
+      igPostCount: igM.count,
+      liPostCount: liM.count,
     }
   })
 }
