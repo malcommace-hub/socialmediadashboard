@@ -11,3 +11,20 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+
+/* Presentation mode — activated by ?present=1 or toggle button */
+body.presentation-mode table td,
+body.presentation-mode table th {
+  font-size: 1rem;
+  padding-top: 0.625rem;
+  padding-bottom: 0.625rem;
+}
+body.presentation-mode .text-2xl {
+  font-size: 1.75rem;
+}
+body.presentation-mode .text-sm {
+  font-size: 0.9375rem;
+}
+body.presentation-mode .bg-white.rounded-2xl {
+  padding: 1.5rem;
+}
