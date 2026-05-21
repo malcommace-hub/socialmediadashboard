@@ -31,6 +31,29 @@ function TrendBadge({ value, prev }: { value: number; prev: number | undefined }
   )
 }
 
+function TtFollowerDot(props: {
+  cx?: number; cy?: number; value?: number
+  payload?: { pctChange?: number | null }
+  [k: string]: unknown
+}) {
+  const { cx, cy, value, payload } = props
+  if (!value || !cx || !cy) return <g />
+  const pct = payload?.pctChange ?? null
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={3.5} fill="#374151" />
+      <text x={cx} y={cy - 8} textAnchor="middle" fontSize={10} fontWeight="bold" fill="#374151">
+        {formatNumber(value)}
+      </text>
+      {pct !== null && (
+        <text x={cx} y={cy - 19} textAnchor="middle" fontSize={9} fill={pct >= 0 ? '#10b981' : '#ef4444'}>
+          {pct >= 0 ? '+' : ''}{pct.toFixed(1)}%
+        </text>
+      )}
+    </g>
+  )
+}
+
 type SortKey = 'views' | 'likes' | 'comments' | 'shares'
 type SortDir = 'asc' | 'desc'
 
@@ -198,6 +221,43 @@ export default function TikTokPage() {
     ? (sortDir === 'desc' ? <ChevronDown size={13} /> : <ChevronUp size={13} />)
     : null
 
+  const ttFollowerChart = useMemo(() => {
+    const real = histLast.filter(d => d.totalFollowers > 0)
+    return real.map((d, i) => ({
+      label: shortMonthLabel(d.year, d.month),
+      followers: d.totalFollowers,
+      pctChange: i > 0 ? ((d.totalFollowers - real[i - 1].totalFollowers) / real[i - 1].totalFollowers) * 100 : null,
+    }))
+  }, [histLast])
+
+  const originBreakdown = useMemo(() => {
+    const csv = videos.filter(v => !v.is_manual)
+    const manual = videos.filter(v => v.is_manual)
+    if (!csv.length || !manual.length) return null
+    const avgViews = (vs: typeof videos) => vs.length ? vs.reduce((a, v) => a + (v.views ?? 0), 0) / vs.length : 0
+    const avgInt = (vs: typeof videos) => vs.length ? vs.reduce((a, v) => a + (v.likes ?? 0) + (v.comments ?? 0) + (v.shares ?? 0), 0) / vs.length : 0
+    return [
+      { origen: 'CSV (exportado)', count: csv.length, avgViews: avgViews(csv), avgInt: avgInt(csv) },
+      { origen: 'Manual', count: manual.length, avgViews: avgViews(manual), avgInt: avgInt(manual) },
+    ]
+  }, [videos])
+
+  const freqBadge = useMemo(() => {
+    const withDate = videos.filter(v => v.video_date)
+    if (withDate.length >= 3) {
+      const weekCounts: Record<number, number> = {}
+      for (const v of withDate) {
+        const day = new Date(v.video_date! + 'T12:00:00Z').getUTCDate()
+        const wk = day <= 7 ? 1 : day <= 14 ? 2 : day <= 21 ? 3 : day <= 28 ? 4 : 5
+        weekCounts[wk] = (weekCounts[wk] ?? 0) + 1
+      }
+      const counts = Object.values(weekCounts)
+      return counts.reduce((a, b) => a + b, 0) / counts.length
+    }
+    if (!videos.length) return null
+    return videos.length / 4.33
+  }, [videos])
+
   const chartCardCls = 'bg-white rounded-2xl border border-gray-100 p-4 shadow-sm'
 
   const ytCurrentViews = ytCurH?.views ?? 0
@@ -229,8 +289,17 @@ export default function TikTokPage() {
 
           {/* Month summary */}
           {summaryText && (
-            <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-xs text-gray-500 mb-5">
+            <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-xs text-gray-500 mb-3">
               {summaryText}
+            </div>
+          )}
+          {freqBadge !== null && (
+            <div className={`inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-semibold mb-5 presentation-hide ${
+              freqBadge >= 3 ? 'bg-emerald-100 text-emerald-700' :
+              freqBadge >= 1 ? 'bg-amber-100 text-amber-700' :
+              'bg-red-100 text-red-700'
+            }`}>
+              🎵 ~{freqBadge.toFixed(1)} videos/sem
             </div>
           )}
 
@@ -252,6 +321,23 @@ export default function TikTokPage() {
               </div>
             ))}
           </div>
+
+          {/* Follower evolution */}
+          {ttFollowerChart.length >= 2 && (
+            <div className={chartCardCls + ' mb-4'}>
+              <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Evolución de seguidores</div>
+              <ResponsiveContainer width="100%" height={200}>
+                <ComposedChart data={ttFollowerChart} margin={{ top: 36, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} domain={['auto', 'auto']} />
+                  <Tooltip formatter={(v, n) => [formatNumber(Number(v)), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                  <Line type="monotone" dataKey="followers" name="Seguidores" stroke="#374151" strokeWidth={2}
+                    dot={<TtFollowerDot /> as unknown as boolean} activeDot={{ r: 5 }} connectNulls={false} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          )}
 
           {histLast.length >= 1 && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
@@ -323,6 +409,35 @@ export default function TikTokPage() {
                 </ResponsiveContainer>
               </div>
             </div>
+          )}
+
+          {/* CSV vs Manual breakdown */}
+          {originBreakdown && (
+            <Card className="mb-6">
+              <CardHeader><CardTitle>Rendimiento por origen</CardTitle></CardHeader>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-400">Origen</th>
+                      <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Videos</th>
+                      <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Views promedio</th>
+                      <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Interacciones promedio</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {originBreakdown.map(row => (
+                      <tr key={row.origen} className="border-b border-gray-50 hover:bg-gray-50">
+                        <td className="py-2 px-3 font-medium text-gray-700">{row.origen}</td>
+                        <td className="py-2 px-3 text-right text-gray-700">{row.count}</td>
+                        <td className="py-2 px-3 text-right font-medium">{formatNumber(Math.round(row.avgViews))}</td>
+                        <td className="py-2 px-3 text-right text-gray-600">{formatNumber(Math.round(row.avgInt))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
           )}
 
           <Card className="mb-10">
