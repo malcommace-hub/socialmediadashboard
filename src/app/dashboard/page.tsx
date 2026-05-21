@@ -868,45 +868,6 @@ export default function OverviewPage() {
             </div>
           )}
 
-          {/* Channel comparison */}
-          {current && (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm mb-6 overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50/60">
-                    <th className="text-left py-2 px-4 text-xs font-medium text-gray-400">Canal</th>
-                    <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Alcance</th>
-                    <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Interacciones</th>
-                    <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">ER%</th>
-                    <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Nuevos seg.</th>
-                    <th className="text-center py-2 px-3 text-xs font-medium text-gray-400">Tend.</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[
-                    { canal: 'Instagram', alcance: current.igImpressions, interact: current.igInteractions, er: current.igER || null, newFoll: current.igNewFollowers, prevAlcance: prev?.igImpressions, rowCls: 'bg-rose-50/40' },
-                    { canal: 'LinkedIn', alcance: current.liImpressions, interact: current.liInteractions, er: current.liER || null, newFoll: current.liNewFollowers, prevAlcance: prev?.liImpressions, rowCls: 'bg-blue-50/40' },
-                    { canal: 'TikTok', alcance: current.ttViews, interact: current.ttInteractions, er: null, newFoll: current.ttNewFollowers, prevAlcance: prev?.ttViews, rowCls: '' },
-                  ].map(({ canal, alcance, interact, er, newFoll, prevAlcance, rowCls }) => {
-                    const trendPct = prevAlcance && prevAlcance > 0 ? ((alcance - prevAlcance) / prevAlcance) * 100 : null
-                    const trend = trendPct === null ? '—' : trendPct > 5 ? '↑' : trendPct < -5 ? '↓' : '→'
-                    const trendCls = trendPct === null ? 'text-gray-300' : trendPct > 5 ? 'text-emerald-600 font-bold' : trendPct < -5 ? 'text-red-500 font-bold' : 'text-gray-400'
-                    return (
-                      <tr key={canal} className={`border-b border-gray-50 last:border-0 ${rowCls}`}>
-                        <td className="py-2.5 px-4 font-medium text-gray-700 text-xs">{canal}</td>
-                        <td className="py-2.5 px-3 text-right text-xs font-medium text-gray-800">{formatNumber(alcance)}</td>
-                        <td className="py-2.5 px-3 text-right text-xs text-gray-600">{formatNumber(interact)}</td>
-                        <td className="py-2.5 px-3 text-right text-xs text-gray-600">{er ? `${er.toFixed(2)}%` : '—'}</td>
-                        <td className="py-2.5 px-3 text-right text-xs text-gray-600">+{formatNumber(newFoll)}</td>
-                        <td className={`py-2.5 px-3 text-center text-sm ${trendCls}`}>{trend}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
           {/* Anomaly alerts */}
           {anomalyAlerts !== null && (
             <div className="mb-6">
