@@ -361,6 +361,16 @@ export async function getInstagramHistory() {
   return result
 }
 
+export async function getInstagramPostsByCollab(account: string) {
+  const { data } = await supabase
+    .from('instagram_posts')
+    .select('*')
+    .eq('type', 'Collab')
+    .eq('collab_account', account)
+    .order('views', { ascending: false })
+  return (data ?? []) as InstagramPost[]
+}
+
 export async function getInstagramCollabComparison() {
   const { data } = await supabase
     .from('instagram_posts')

@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import {
   getInstagramStats, getInstagramHistory, deleteInstagramPost,
   upsertInstagramMonthly, addInstagramPostManual, getInstagramCollabComparison,
+  getInstagramPostsByCollab,
 } from '@/lib/queries'
 import { formatNumber, formatPercent, monthLabel, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
 import { useMesParam } from '@/hooks/useMesParam'
@@ -128,6 +129,9 @@ export default function InstagramPage() {
   const [collabWithout, setCollabWithout] = useState(0)
   const [collabsOpen, setCollabsOpen] = useState(false)
   const [weeklyOpen, setWeeklyOpen] = useState(false)
+  const [expandedCollab, setExpandedCollab] = useState<string | null>(null)
+  const [collabPostsMap, setCollabPostsMap] = useState<Record<string, InstagramPost[]>>({})
+  const [loadingCollab, setLoadingCollab] = useState<string | null>(null)
 
   useEffect(() => {
     getInstagramCollabComparison().then(({ comparison, withoutAccount }) => {
@@ -216,6 +220,16 @@ export default function InstagramPage() {
     await Promise.all([...selected].map(id => deleteInstagramPost(id)))
     setSelected(new Set())
     await load()
+  }
+
+  async function handleCollabExpand(account: string) {
+    if (expandedCollab === account) { setExpandedCollab(null); return }
+    setExpandedCollab(account)
+    if (collabPostsMap[account]) return
+    setLoadingCollab(account)
+    const posts = await getInstagramPostsByCollab(account)
+    setCollabPostsMap(m => ({ ...m, [account]: posts }))
+    setLoadingCollab(null)
   }
 
   function toggleSort(key: SortKey) {
@@ -1060,12 +1074,62 @@ export default function InstagramPage() {
                       </thead>
                       <tbody>
                         {collabComparison.map(row => (
-                          <tr key={row.account} className="border-b border-gray-50 hover:bg-gray-50">
-                            <td className="py-2 px-3 font-medium text-orange-600">{row.account}</td>
-                            <td className="py-2 px-3 text-right text-gray-700">{row.count}</td>
-                            <td className="py-2 px-3 text-right font-medium">{formatNumber(Math.round(row.avgViews))}</td>
-                            <td className="py-2 px-3 text-right text-gray-600">{formatPercent(row.avgER)}</td>
-                          </tr>
+                          <>
+                            <tr
+                              key={row.account}
+                              className="border-b border-gray-50 hover:bg-orange-50 cursor-pointer select-none"
+                              onClick={() => handleCollabExpand(row.account)}
+                            >
+                              <td className="py-2 px-3 font-medium text-orange-600 flex items-center gap-1">
+                                {expandedCollab === row.account ? <ChevronUp size={13} className="text-gray-400 shrink-0" /> : <ChevronDown size={13} className="text-gray-400 shrink-0" />}
+                                {row.account}
+                              </td>
+                              <td className="py-2 px-3 text-right text-gray-700">{row.count}</td>
+                              <td className="py-2 px-3 text-right font-medium">{formatNumber(Math.round(row.avgViews))}</td>
+                              <td className="py-2 px-3 text-right text-gray-600">{formatPercent(row.avgER)}</td>
+                            </tr>
+                            {expandedCollab === row.account && (
+                              <tr key={`${row.account}-detail`}>
+                                <td colSpan={4} className="px-3 pb-3 pt-1 bg-orange-50/60">
+                                  {loadingCollab === row.account ? (
+                                    <div className="text-xs text-gray-400 py-2">Cargando posts...</div>
+                                  ) : (
+                                    <table className="w-full text-xs">
+                                      <thead>
+                                        <tr className="border-b border-orange-100">
+                                          <th className="text-left py-1.5 px-2 font-medium text-gray-400">#</th>
+                                          <th className="text-left py-1.5 px-2 font-medium text-gray-400">Descripción</th>
+                                          <th className="text-left py-1.5 px-2 font-medium text-gray-400">Mes</th>
+                                          <th className="text-right py-1.5 px-2 font-medium text-gray-400">Views</th>
+                                          <th className="text-right py-1.5 px-2 font-medium text-gray-400">ER%</th>
+                                          <th className="py-1.5 px-2 w-6" />
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {(collabPostsMap[row.account] ?? []).map((p, idx) => (
+                                          <tr key={p.id} className="border-b border-orange-50 last:border-0">
+                                            <td className="py-1.5 px-2 text-gray-400">{idx + 1}</td>
+                                            <td className="py-1.5 px-2 text-gray-700 max-w-[200px] truncate">{p.description || '—'}</td>
+                                            <td className="py-1.5 px-2 text-gray-500 whitespace-nowrap">{shortMonthLabel(p.year, p.month)}</td>
+                                            <td className="py-1.5 px-2 text-right font-medium">{formatNumber(p.views)}</td>
+                                            <td className="py-1.5 px-2 text-right text-emerald-600">{formatPercent(erForPost(p))}</td>
+                                            <td className="py-1.5 px-2 text-right">
+                                              {p.permalink && !p.permalink.startsWith('manual:')
+                                                ? <a href={p.permalink} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 inline-flex"><ExternalLink size={12} /></a>
+                                                : null}
+                                            </td>
+                                          </tr>
+                                        ))}
+                                        {(collabPostsMap[row.account] ?? []).length === 0 && (
+                                          <tr><td colSpan={6} className="py-3 text-center text-gray-400">Sin posts registrados</td></tr>
+                                        )}
+                                      </tbody>
+                                    </table>
+                                  )}
+                                </td>
+                              </tr>
+                            )}
+                          </>
                         ))}
                       </tbody>
                     </table>
