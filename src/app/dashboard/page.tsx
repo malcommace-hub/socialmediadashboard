@@ -1,7 +1,7 @@
 'use client'
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import { Card } from '@/components/ui/card'
-import { getOverviewHistory, getInstagramTopPosts, getLinkedInTopPosts } from '@/lib/queries'
+import { getOverviewHistory, getInstagramTopPosts, getLinkedInTopPosts, getMonthlyNote, upsertMonthlyNote } from '@/lib/queries'
 import { formatNumber, formatPercent, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -179,6 +179,11 @@ export default function OverviewPage() {
   const [liTop, setLiTop] = useState<LiTop[]>([])
   const [topOpen, setTopOpen] = useState(false)
 
+  const [note, setNote] = useState('')
+  const [saveStatus, setSaveStatus] = useState<'' | 'saving' | 'saved'>('')
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   useEffect(() => {
     setLoading(true)
     getOverviewHistory().then(data => {
@@ -206,6 +211,28 @@ export default function OverviewPage() {
       .then(([ig, li]) => { setIgTop(ig); setLiTop(li) })
       .catch(() => {})
   }, [selectedYear])
+
+  useEffect(() => {
+    if (!selectedYear || !selectedMonth) return
+    setNote('')
+    setSaveStatus('')
+    getMonthlyNote(selectedYear, selectedMonth)
+      .then(data => setNote(data?.content ?? ''))
+      .catch(() => {})
+  }, [selectedYear, selectedMonth])
+
+  function handleNoteChange(value: string) {
+    setNote(value)
+    setSaveStatus('saving')
+    if (saveTimer.current) clearTimeout(saveTimer.current)
+    saveTimer.current = setTimeout(async () => {
+      if (!selectedYear || !selectedMonth) return
+      await upsertMonthlyNote(selectedYear, selectedMonth, value).catch(() => {})
+      setSaveStatus('saved')
+      if (clearTimer.current) clearTimeout(clearTimer.current)
+      clearTimer.current = setTimeout(() => setSaveStatus(''), 2000)
+    }, 1500)
+  }
 
   const impData = useMemo(() => {
     const totals = visible.map(d => d.igImpressions + d.liImpressions + d.ttViews + d.ytViews)
@@ -455,6 +482,26 @@ export default function OverviewPage() {
               height={240}
             />
           </div>
+
+          {/* En Seeds lo vemos */}
+          {current && (
+            <div className="mt-8">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">En Seeds lo vemos</h2>
+                <span className="text-xs h-4">
+                  {saveStatus === 'saving' && <span className="text-gray-400">Guardando...</span>}
+                  {saveStatus === 'saved' && <span className="text-emerald-500">Guardado ✓</span>}
+                </span>
+              </div>
+              <textarea
+                value={note}
+                onChange={e => handleNoteChange(e.target.value)}
+                placeholder="¿Qué aprendimos este mes? Escribí acá tus observaciones..."
+                className="w-full rounded-2xl border border-gray-100 bg-white px-5 py-4 text-sm leading-relaxed text-gray-700 placeholder-gray-300 resize-none focus:outline-none focus:border-gray-200 shadow-sm"
+                rows={5}
+              />
+            </div>
+          )}
         </>
       )}
     </div>

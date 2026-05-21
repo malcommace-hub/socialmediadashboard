@@ -517,6 +517,24 @@ export async function getInstagramTopPosts(year: number, limit = 12) {
   }))
 }
 
+// ─── Monthly notes ───────────────────────────
+
+export async function getMonthlyNote(year: number, month: number) {
+  const { data } = await supabase
+    .from('monthly_notes')
+    .select('content')
+    .eq('year', year)
+    .eq('month', month)
+    .maybeSingle()
+  return data as { content: string } | null
+}
+
+export async function upsertMonthlyNote(year: number, month: number, content: string) {
+  return supabase
+    .from('monthly_notes')
+    .upsert({ year, month, content, updated_at: new Date().toISOString() }, { onConflict: 'year,month' })
+}
+
 export async function getLinkedInTopPosts(year: number, limit = 12) {
   const { data } = await supabase
     .from('linkedin_posts')
