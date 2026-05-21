@@ -134,6 +134,9 @@ export default function InstagramPage() {
   const [expandedCollab, setExpandedCollab] = useState<string | null>(null)
   const [collabPostsMap, setCollabPostsMap] = useState<Record<string, InstagramPost[]>>({})
   const [loadingCollab, setLoadingCollab] = useState<string | null>(null)
+  const [compareMode, setCompareMode] = useState(false)
+  const [prevStats, setPrevStats] = useState<InstagramStats | null>(null)
+  const [loadingCompare, setLoadingCompare] = useState(false)
 
   useEffect(() => {
     getInstagramCollabComparison().then(({ comparison, withoutAccount }) => {
@@ -172,7 +175,7 @@ export default function InstagramPage() {
   }, [year, month])
 
   useEffect(() => { load() }, [load])
-  useEffect(() => { setSelected(new Set()) }, [year, month])
+  useEffect(() => { setSelected(new Set()); setCompareMode(false) }, [year, month])
 
   async function saveMonthly() {
     setSaving(true)
@@ -490,6 +493,40 @@ export default function InstagramPage() {
     return counts.reduce((a, b) => a + b, 0) / counts.length
   }, [regularPosts])
 
+  const prevMonthFilter = useMemo(() => {
+    const m = month === 1 ? 12 : month - 1
+    const y = month === 1 ? year - 1 : year
+    return { year: y, month: m }
+  }, [year, month])
+
+  useEffect(() => {
+    if (!compareMode) { setPrevStats(null); return }
+    setLoadingCompare(true)
+    getInstagramStats(prevMonthFilter)
+      .then(setPrevStats)
+      .catch(() => {})
+      .finally(() => setLoadingCompare(false))
+  }, [compareMode, prevMonthFilter])
+
+  const prevTypeBreakdown = useMemo(() => {
+    if (!prevStats) return []
+    const posts = (prevStats.posts ?? []).filter(p => !(p.is_manual && p.type === 'Collab'))
+    const byType: Record<string, { count: number; totalViews: number; totalER: number }> = {}
+    for (const p of posts) {
+      if (!byType[p.type]) byType[p.type] = { count: 0, totalViews: 0, totalER: 0 }
+      byType[p.type].count++
+      byType[p.type].totalViews += p.views ?? 0
+      byType[p.type].totalER += erForPost(p)
+    }
+    return Object.entries(byType)
+      .map(([type, d]) => ({
+        type, count: d.count,
+        avgViews: d.count ? d.totalViews / d.count : 0,
+        avgER: d.count ? d.totalER / d.count : 0,
+      }))
+      .sort((a, b) => b.avgViews - a.avgViews)
+  }, [prevStats])
+
   const collabScores = useMemo(() => {
     if (collabComparison.length < 2) return {}
     const totalRows = collabComparison.length
@@ -523,6 +560,14 @@ export default function InstagramPage() {
             title="Actualizar datos"
           >
             <RefreshCw size={15} />
+          </button>
+          <button
+            onClick={() => setCompareMode(c => !c)}
+            className={`presentation-hide text-sm px-3 py-1.5 rounded-lg font-medium transition-colors ${
+              compareMode ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {compareMode ? 'Comparando' : 'Comparar con mes anterior'}
           </button>
           <MonthSelector year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m) }} />
         </div>
@@ -591,6 +636,52 @@ export default function InstagramPage() {
               </div>
             ))}
           </div>
+
+          {/* Month comparison panel */}
+          {compareMode && (
+            <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 mb-6">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="text-xs font-semibold text-indigo-700 uppercase tracking-wider">
+                  Comparación: {monthLabel(year, month)} vs {monthLabel(prevMonthFilter.year, prevMonthFilter.month)}
+                </div>
+                {loadingCompare && <span className="text-xs text-indigo-400">Cargando...</span>}
+              </div>
+              {prevStats && (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-indigo-200">
+                        <th className="text-left py-1.5 px-2 text-xs font-medium text-indigo-400">Métrica</th>
+                        <th className="text-right py-1.5 px-2 text-xs font-medium text-indigo-400">{shortMonthLabel(year, month)}</th>
+                        <th className="text-right py-1.5 px-2 text-xs font-medium text-indigo-400">{shortMonthLabel(prevMonthFilter.year, prevMonthFilter.month)}</th>
+                        <th className="text-right py-1.5 px-2 text-xs font-medium text-indigo-400">Cambio</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        { label: 'Views totales', cur: stats?.grandTotalViews ?? 0, prev: prevStats.grandTotalViews ?? 0, fmt: formatNumber },
+                        { label: 'Interacciones', cur: stats?.totalInteractions ?? 0, prev: prevStats.totalInteractions ?? 0, fmt: formatNumber },
+                        { label: 'Nuevos seguidores', cur: stats?.monthly?.new_followers ?? 0, prev: prevStats.monthly?.new_followers ?? 0, fmt: (v: number) => `+${formatNumber(v)}` },
+                        { label: 'Engagement %', cur: stats?.avgER ?? 0, prev: prevStats.avgER ?? 0, fmt: formatPercent },
+                      ].map(({ label, cur, prev, fmt }) => {
+                        const chg = prev > 0 ? ((cur - prev) / prev) * 100 : null
+                        return (
+                          <tr key={label} className="border-b border-indigo-50">
+                            <td className="py-2 px-2 text-gray-700">{label}</td>
+                            <td className="py-2 px-2 text-right font-semibold text-gray-900">{fmt(cur)}</td>
+                            <td className="py-2 px-2 text-right text-gray-500">{fmt(prev)}</td>
+                            <td className={`py-2 px-2 text-right font-semibold ${chg === null ? 'text-gray-400' : chg >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                              {chg !== null ? `${chg >= 0 ? '+' : ''}${chg.toFixed(1)}%` : '—'}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Follower evolution */}
           {igFollowerChart.filter(d => d.followers).length >= 2 && (
@@ -900,28 +991,58 @@ export default function InstagramPage() {
             <Card className="mb-6">
               <CardHeader><CardTitle>Rendimiento por tipo de contenido</CardTitle></CardHeader>
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100">
-                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-400">Tipo</th>
-                      <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Posts</th>
-                      <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Views promedio</th>
-                      <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">ER% promedio</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {typeBreakdown.map(row => (
-                      <tr key={row.type} className="border-b border-gray-50 hover:bg-gray-50">
-                        <td className="py-2 px-3">
-                          <Badge variant={(row.type.toLowerCase() as 'reel' | 'post' | 'collab' | 'story' | 'manual') || 'default'} className="text-xs">{row.type}</Badge>
-                        </td>
-                        <td className="py-2 px-3 text-right text-gray-700">{row.count}</td>
-                        <td className="py-2 px-3 text-right font-medium">{formatNumber(Math.round(row.avgViews))}</td>
-                        <td className="py-2 px-3 text-right text-gray-600">{formatPercent(row.avgER)}</td>
+                {compareMode && prevStats ? (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-100">
+                        <th className="text-left py-2 px-3 text-xs font-medium text-gray-400">Tipo</th>
+                        <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Posts {shortMonthLabel(year, month)}</th>
+                        <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Views prom. {shortMonthLabel(year, month)}</th>
+                        <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Posts {shortMonthLabel(prevMonthFilter.year, prevMonthFilter.month)}</th>
+                        <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Views prom. {shortMonthLabel(prevMonthFilter.year, prevMonthFilter.month)}</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {typeBreakdown.map(row => {
+                        const prev = prevTypeBreakdown.find(r => r.type === row.type)
+                        return (
+                          <tr key={row.type} className="border-b border-gray-50 hover:bg-gray-50">
+                            <td className="py-2 px-3">
+                              <Badge variant={(row.type.toLowerCase() as 'reel' | 'post' | 'collab' | 'story' | 'manual') || 'default'} className="text-xs">{row.type}</Badge>
+                            </td>
+                            <td className="py-2 px-3 text-right font-semibold">{row.count}</td>
+                            <td className="py-2 px-3 text-right font-semibold">{formatNumber(Math.round(row.avgViews))}</td>
+                            <td className="py-2 px-3 text-right text-gray-500">{prev ? prev.count : '—'}</td>
+                            <td className="py-2 px-3 text-right text-gray-500">{prev ? formatNumber(Math.round(prev.avgViews)) : '—'}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-100">
+                        <th className="text-left py-2 px-3 text-xs font-medium text-gray-400">Tipo</th>
+                        <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Posts</th>
+                        <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Views promedio</th>
+                        <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">ER% promedio</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {typeBreakdown.map(row => (
+                        <tr key={row.type} className="border-b border-gray-50 hover:bg-gray-50">
+                          <td className="py-2 px-3">
+                            <Badge variant={(row.type.toLowerCase() as 'reel' | 'post' | 'collab' | 'story' | 'manual') || 'default'} className="text-xs">{row.type}</Badge>
+                          </td>
+                          <td className="py-2 px-3 text-right text-gray-700">{row.count}</td>
+                          <td className="py-2 px-3 text-right font-medium">{formatNumber(Math.round(row.avgViews))}</td>
+                          <td className="py-2 px-3 text-right text-gray-600">{formatPercent(row.avgER)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </Card>
           )}
