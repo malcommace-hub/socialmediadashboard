@@ -14,10 +14,22 @@ function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v))
 }
 
+function ratioToScore(ratio: number): number {
+  if (ratio <= 0) return 5
+  if (ratio >= 1) {
+    // ratio 1.0 → 50, 1.5 → 70, 2.0 → 84, 3.0 → 97, 5.0 → 100
+    // tanh S-curve anchored at ratio=1 (score 50) and ratio=1.5 (score 70)
+    return Math.min(100, Math.round(50 + 50 * Math.tanh(Math.log(7 / 3) * (ratio - 1))))
+  } else {
+    // ratio 0.9 → 46, 0.7 → 37, 0.5 → 28, 0.3 → 18, 0.1 → 7
+    // power curve with soft floor — k=0.84 amortises the penalty vs linear
+    return Math.max(5, Math.round(50 * Math.pow(ratio, 0.84)))
+  }
+}
+
 function dimSubScore(current: number, avg: number): number {
-  if (avg <= 0) return 50
-  const ratio = current / avg
-  return ratio >= 1 ? clamp(50 + (ratio - 1) * 100, 0, 100) : clamp(ratio * 50, 0, 100)
+  if (avg <= 0) return 55  // elevated neutral: no usable history to compare against
+  return ratioToScore(current / avg)
 }
 
 function prior3Avg(history: HP[], current: HP, getValue: (h: HP) => number): number | null {
@@ -60,7 +72,7 @@ export function MonthScoreCard({ current, history }: MonthScoreCardProps) {
     const sReach = dimSubScore(reach, avgReach ?? 0)
     const sEng = dimSubScore(engagement, avgEng ?? 0)
     const sFoll = dimSubScore(followers, avgFoll ?? 0)
-    const sNl = nlActive ? dimSubScore(nl, avgNl ?? 0) : 50
+    const sNl = nlActive ? dimSubScore(nl, avgNl ?? 0) : 55
     const sPosts = dimSubScore(posts, avgPosts ?? 0)
 
     const tendencyChecks = [
@@ -71,7 +83,12 @@ export function MonthScoreCard({ current, history }: MonthScoreCardProps) {
       avgPosts !== null ? posts >= avgPosts : null,
     ].filter((v): v is boolean => v !== null)
     const beating = tendencyChecks.filter(Boolean).length
-    const sTend = tendencyChecks.length === 0 ? 50 : beating >= 3 ? 80 : beating === 2 ? 50 : 20
+    const sTend = tendencyChecks.length === 0 ? 55
+      : beating === tendencyChecks.length ? 95
+      : beating >= 3 ? 75
+      : beating === 2 ? 55
+      : beating === 1 ? 30
+      : 10
 
     const raw =
       sReach * wReach + sEng * wEng + sFoll * wFoll +
