@@ -20,6 +20,7 @@ import {
 import Link from 'next/link'
 import { SkeletonCard } from '@/components/dashboard/SkeletonCard'
 import { clearCache } from '@/lib/queryCache'
+import { ratioToScore } from '@/lib/scoring'
 
 type HistoryPoint = Awaited<ReturnType<typeof getInstagramHistory>>[0]
 
@@ -488,6 +489,21 @@ export default function InstagramPage() {
     const counts = Object.values(weekCounts)
     return counts.reduce((a, b) => a + b, 0) / counts.length
   }, [regularPosts])
+
+  const collabScores = useMemo(() => {
+    if (collabComparison.length < 2) return {}
+    const totalRows = collabComparison.length
+    const avgViews = collabComparison.reduce((a, r) => a + r.avgViews, 0) / totalRows
+    const avgER = collabComparison.reduce((a, r) => a + r.avgER, 0) / totalRows
+    const result: Record<string, number> = {}
+    for (const row of collabComparison) {
+      const viewsScore = ratioToScore(avgViews > 0 ? row.avgViews / avgViews : 0)
+      const erScore = ratioToScore(avgER > 0 ? row.avgER / avgER : 0)
+      const consistencyScore = (Math.min(row.count, 10) / 10) * 100
+      result[row.account] = Math.round(0.4 * viewsScore + 0.4 * erScore + 0.2 * consistencyScore)
+    }
+    return result
+  }, [collabComparison])
 
   const chartCardCls = 'bg-white rounded-2xl border border-gray-100 p-4 shadow-sm'
 
@@ -1142,6 +1158,7 @@ export default function InstagramPage() {
                           <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Collabs</th>
                           <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Views promedio</th>
                           <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">ER% promedio</th>
+                          <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Score</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1159,10 +1176,18 @@ export default function InstagramPage() {
                               <td className="py-2 px-3 text-right text-gray-700">{row.count}</td>
                               <td className="py-2 px-3 text-right font-medium">{formatNumber(Math.round(row.avgViews))}</td>
                               <td className="py-2 px-3 text-right text-gray-600">{formatPercent(row.avgER)}</td>
+                              <td className="py-2 px-3 text-right">
+                                {(() => {
+                                  const s = collabScores[row.account]
+                                  if (s === undefined) return '—'
+                                  const cls = s >= 80 ? 'text-emerald-600' : s >= 60 ? 'text-green-600' : s >= 40 ? 'text-amber-600' : 'text-red-500'
+                                  return <span className={`font-bold ${cls}`}>{s}</span>
+                                })()}
+                              </td>
                             </tr>
                             {expandedCollab === row.account && (
                               <tr key={`${row.account}-detail`}>
-                                <td colSpan={4} className="px-3 pb-3 pt-1 bg-orange-50/60">
+                                <td colSpan={5} className="px-3 pb-3 pt-1 bg-orange-50/60">
                                   {loadingCollab === row.account ? (
                                     <div className="text-xs text-gray-400 py-2">Cargando posts...</div>
                                   ) : (
