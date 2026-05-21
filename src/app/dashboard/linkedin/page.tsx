@@ -4,7 +4,8 @@ import { MonthSelector } from '@/components/ui/month-selector'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { getLinkedInStats, getLinkedInHistory, deleteLinkedInPost, upsertLinkedInMonthlyTotals, getLinkedInPostDates } from '@/lib/queries'
-import { formatNumber, formatPercent, currentYearMonth, monthLabel, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
+import { formatNumber, formatPercent, monthLabel, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
+import { useMesParam } from '@/hooks/useMesParam'
 import type { LinkedInStats } from '@/lib/types'
 import { Trash2, ExternalLink, ChevronUp, ChevronDown, Upload, Plus, PencilLine } from 'lucide-react'
 import {
@@ -13,6 +14,7 @@ import {
   ScatterChart, Scatter, ZAxis, ReferenceLine,
 } from 'recharts'
 import Link from 'next/link'
+import { SkeletonCard } from '@/components/dashboard/SkeletonCard'
 
 // ISO-week Monday index (unique integer per week)
 function isoWeekIndex(dateStr: string): number {
@@ -94,9 +96,7 @@ function TrendBadge({ value, prev }: { value: number; prev: number | undefined }
 }
 
 export default function LinkedInPage() {
-  const { year: cy, month: cm } = currentYearMonth()
-  const [year, setYear] = useState(cy)
-  const [month, setMonth] = useState(cm)
+  const { year, month, setYear, setMonth } = useMesParam()
   const [stats, setStats] = useState<LinkedInStats | null>(null)
   const [history, setHistory] = useState<HistoryPoint[]>([])
   const [loading, setLoading] = useState(true)
@@ -293,7 +293,12 @@ export default function LinkedInPage() {
         </div>
       )}
       {loading ? (
-        <div className="flex items-center justify-center h-64 text-gray-400">Cargando datos...</div>
+        <>
+          <SkeletonCard kpi count={4} />
+          <SkeletonCard chart />
+          <SkeletonCard chart />
+          <SkeletonCard lines={5} />
+        </>
       ) : (
         <>
           {/* Month summary */}

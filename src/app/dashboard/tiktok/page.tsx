@@ -7,7 +7,8 @@ import {
   getTikTokStats, getTikTokHistory, deleteTikTokVideo, upsertTikTokMonthly,
   addTikTokVideoManual, getYouTubeMonthly, upsertYouTubeMonthly, getYouTubeHistory,
 } from '@/lib/queries'
-import { formatNumber, currentYearMonth, monthLabel, shortMonthLabel, movingAvg, pctChange, formatPercent } from '@/lib/utils'
+import { formatNumber, monthLabel, shortMonthLabel, movingAvg, pctChange, formatPercent } from '@/lib/utils'
+import { useMesParam } from '@/hooks/useMesParam'
 import type { TikTokStats } from '@/lib/types'
 import { Trash2, ExternalLink, Plus, ChevronUp, ChevronDown, Upload } from 'lucide-react'
 import {
@@ -15,6 +16,7 @@ import {
   ResponsiveContainer, LabelList, AreaChart, Area,
 } from 'recharts'
 import Link from 'next/link'
+import { SkeletonCard } from '@/components/dashboard/SkeletonCard'
 
 type HistoryPoint = Awaited<ReturnType<typeof getTikTokHistory>>[0]
 type YTHistoryPoint = Awaited<ReturnType<typeof getYouTubeHistory>>[0]
@@ -58,9 +60,7 @@ type SortKey = 'views' | 'likes' | 'comments' | 'shares'
 type SortDir = 'asc' | 'desc'
 
 export default function TikTokPage() {
-  const { year: cy, month: cm } = currentYearMonth()
-  const [year, setYear] = useState(cy)
-  const [month, setMonth] = useState(cm)
+  const { year, month, setYear, setMonth } = useMesParam()
   const [stats, setStats] = useState<TikTokStats | null>(null)
   const [history, setHistory] = useState<HistoryPoint[]>([])
   const [ytHistory, setYtHistory] = useState<YTHistoryPoint[]>([])
@@ -278,7 +278,12 @@ export default function TikTokPage() {
         </div>
       )}
       {loading ? (
-        <div className="flex items-center justify-center h-64 text-gray-400">Cargando datos...</div>
+        <>
+          <SkeletonCard kpi count={3} />
+          <SkeletonCard chart />
+          <SkeletonCard chart />
+          <SkeletonCard lines={5} />
+        </>
       ) : (
         <>
           {/* ── TikTok ─────────────────────────────── */}

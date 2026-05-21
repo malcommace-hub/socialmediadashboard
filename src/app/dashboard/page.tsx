@@ -8,6 +8,7 @@ import {
   ResponsiveContainer, LabelList,
 } from 'recharts'
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react'
+import { SkeletonCard } from '@/components/dashboard/SkeletonCard'
 import { MonthScoreCard } from '@/components/dashboard/MonthScoreCard'
 
 type HistoryPoint = Awaited<ReturnType<typeof getOverviewHistory>>[0]
@@ -368,7 +369,11 @@ export default function OverviewPage() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center h-64 text-gray-400">Cargando historial...</div>
+        <>
+          <SkeletonCard chart />
+          <SkeletonCard chart />
+          <SkeletonCard lines={5} />
+        </>
       ) : (
         <>
           {/* Window + MA selectors */}

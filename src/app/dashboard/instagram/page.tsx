@@ -7,7 +7,8 @@ import {
   getInstagramStats, getInstagramHistory, deleteInstagramPost,
   upsertInstagramMonthly, addInstagramPostManual, getInstagramCollabComparison,
 } from '@/lib/queries'
-import { formatNumber, formatPercent, currentYearMonth, monthLabel, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
+import { formatNumber, formatPercent, monthLabel, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
+import { useMesParam } from '@/hooks/useMesParam'
 import type { InstagramStats, InstagramPost } from '@/lib/types'
 import { Trash2, ExternalLink, Plus, ChevronUp, ChevronDown, PencilLine, Upload } from 'lucide-react'
 import {
@@ -16,6 +17,7 @@ import {
   ScatterChart, Scatter, ZAxis, ReferenceLine,
 } from 'recharts'
 import Link from 'next/link'
+import { SkeletonCard } from '@/components/dashboard/SkeletonCard'
 
 type HistoryPoint = Awaited<ReturnType<typeof getInstagramHistory>>[0]
 
@@ -93,9 +95,7 @@ const emptyNewPost = {
 }
 
 export default function InstagramPage() {
-  const { year: cy, month: cm } = currentYearMonth()
-  const [year, setYear] = useState(cy)
-  const [month, setMonth] = useState(cm)
+  const { year, month, setYear, setMonth } = useMesParam()
   const [stats, setStats] = useState<InstagramStats | null>(null)
   const [history, setHistory] = useState<HistoryPoint[]>([])
   const [loading, setLoading] = useState(true)
@@ -436,7 +436,12 @@ export default function InstagramPage() {
         </div>
       )}
       {loading ? (
-        <div className="flex items-center justify-center h-64 text-gray-400">Cargando datos...</div>
+        <>
+          <SkeletonCard kpi count={4} />
+          <SkeletonCard chart />
+          <SkeletonCard chart />
+          <SkeletonCard lines={5} />
+        </>
       ) : (
         <>
           {/* Month summary */}

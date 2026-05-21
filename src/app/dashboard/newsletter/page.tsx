@@ -3,12 +3,14 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { MonthSelector } from '@/components/ui/month-selector'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { getNewsletterData, upsertNewsletterMonthly, addNewsletterEpisode, deleteNewsletterEpisode, getNewsletterHistory } from '@/lib/queries'
-import { formatNumber, currentYearMonth, monthLabel, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
+import { formatNumber, monthLabel, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
+import { useMesParam } from '@/hooks/useMesParam'
 import type { NewsletterEpisode } from '@/lib/types'
 import { Trash2, Plus } from 'lucide-react'
+import { SkeletonCard } from '@/components/dashboard/SkeletonCard'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, LabelList,
+  ResponsiveContainer, LabelList, AreaChart, Area,
 } from 'recharts'
 
 type HistoryPoint = Awaited<ReturnType<typeof getNewsletterHistory>>[0]
@@ -26,9 +28,7 @@ function TrendBadge({ value, prev }: { value: number; prev: number | undefined }
 }
 
 export default function NewsletterPage() {
-  const { year: cy, month: cm } = currentYearMonth()
-  const [year, setYear] = useState(cy)
-  const [month, setMonth] = useState(cm)
+  const { year, month, setYear, setMonth } = useMesParam()
   const [episodes, setEpisodes] = useState<NewsletterEpisode[]>([])
   const [history, setHistory] = useState<HistoryPoint[]>([])
   const [newSubs, setNewSubs] = useState('')
@@ -115,6 +115,20 @@ export default function NewsletterPage() {
     return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: d.newSubscribers, ma: ma[i] }))
   }, [histLast])
 
+  const cumulativeSubsChart = useMemo(() => {
+    const sorted = [...history].sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month)
+    let running = 0
+    return sorted.map(d => {
+      running += d.newSubscribers ?? 0
+      return { label: shortMonthLabel(d.year, d.month), total: running }
+    }).slice(-12)
+  }, [history])
+
+  const topEpId = useMemo(() => {
+    if (episodes.length < 2) return null
+    return [...episodes].sort((a, b) => (b.views ?? 0) - (a.views ?? 0))[0].id
+  }, [episodes])
+
   const summaryText = useMemo(() => {
     const bestEp = [...episodes].sort((a, b) => (b.views ?? 0) - (a.views ?? 0))[0]
     const parts: string[] = [monthLabel(year, month)]
@@ -146,7 +160,11 @@ export default function NewsletterPage() {
         </div>
       )}
       {loading ? (
-        <div className="flex items-center justify-center h-32 text-gray-400">Cargando...</div>
+        <>
+          <SkeletonCard kpi count={3} />
+          <SkeletonCard chart />
+          <SkeletonCard lines={5} />
+        </>
       ) : (
         <>
           {/* Month summary */}
@@ -186,39 +204,63 @@ export default function NewsletterPage() {
 
           {/* Historical charts */}
           {histLast.length >= 1 && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-              <div className={chartCardCls}>
-                <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Visualizaciones artículos</div>
-                <ResponsiveContainer width="100%" height={200}>
-                  <ComposedChart data={viewsChart} barCategoryGap="22%" margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} />
-                    <Tooltip formatter={(v, n) => [formatNumber(Number(v)), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                    <Bar dataKey="value" name="Views" fill="#fed7aa" radius={[4, 4, 0, 0]}>
-                      <LabelList dataKey="value" position="top" style={{ fontSize: 10, fontWeight: 700, fill: '#374151' }} formatter={(v: unknown) => formatNumber(Number(v))} />
-                    </Bar>
-                    <Line type="monotone" dataKey="ma" name="Media 3m" stroke="#f97316" strokeDasharray="5 3" dot={false} strokeWidth={2} connectNulls />
-                  </ComposedChart>
-                </ResponsiveContainer>
+            <>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                <div className={chartCardCls}>
+                  <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Visualizaciones artículos</div>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <ComposedChart data={viewsChart} barCategoryGap="22%" margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                      <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} />
+                      <Tooltip formatter={(v, n) => [formatNumber(Number(v)), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                      <Bar dataKey="value" name="Views" fill="#fed7aa" radius={[4, 4, 0, 0]}>
+                        <LabelList dataKey="value" position="top" style={{ fontSize: 10, fontWeight: 700, fill: '#374151' }} formatter={(v: unknown) => formatNumber(Number(v))} />
+                      </Bar>
+                      <Line type="monotone" dataKey="ma" name="Media 3m" stroke="#f97316" strokeDasharray="5 3" dot={false} strokeWidth={2} connectNulls />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className={chartCardCls}>
+                  <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Nuevos suscriptores</div>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <ComposedChart data={subsChart} barCategoryGap="22%" margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                      <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} />
+                      <Tooltip formatter={(v, n) => [formatNumber(Number(v)), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                      <Bar dataKey="value" name="Nuevos subs" fill="#fdba74" radius={[4, 4, 0, 0]}>
+                        <LabelList dataKey="value" position="top" style={{ fontSize: 10, fontWeight: 700, fill: '#374151' }} formatter={(v: unknown) => formatNumber(Number(v))} />
+                      </Bar>
+                      <Line type="monotone" dataKey="ma" name="Media 3m" stroke="#ea580c" strokeDasharray="5 3" dot={false} strokeWidth={2} connectNulls />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
 
-              <div className={chartCardCls}>
-                <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Nuevos suscriptores</div>
-                <ResponsiveContainer width="100%" height={200}>
-                  <ComposedChart data={subsChart} barCategoryGap="22%" margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} />
-                    <Tooltip formatter={(v, n) => [formatNumber(Number(v)), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                    <Bar dataKey="value" name="Nuevos subs" fill="#fdba74" radius={[4, 4, 0, 0]}>
-                      <LabelList dataKey="value" position="top" style={{ fontSize: 10, fontWeight: 700, fill: '#374151' }} formatter={(v: unknown) => formatNumber(Number(v))} />
-                    </Bar>
-                    <Line type="monotone" dataKey="ma" name="Media 3m" stroke="#ea580c" strokeDasharray="5 3" dot={false} strokeWidth={2} connectNulls />
-                  </ComposedChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
+              {/* Cumulative subscribers chart (5c) */}
+              {cumulativeSubsChart.length >= 2 && (
+                <div className={`${chartCardCls} mb-6`}>
+                  <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Suscriptores acumulados</div>
+                  <ResponsiveContainer width="100%" height={160}>
+                    <AreaChart data={cumulativeSubsChart} margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="nlSubsGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#f97316" stopOpacity={0.18} />
+                          <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                      <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} />
+                      <Tooltip formatter={(v) => [formatNumber(Number(v)), 'Total suscriptores']} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                      <Area type="monotone" dataKey="total" stroke="#f97316" strokeWidth={2} fill="url(#nlSubsGrad)" dot={false} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </>
           )}
 
           {/* New subscribers */}
@@ -306,7 +348,10 @@ export default function NewsletterPage() {
                 {episodes.map(ep => (
                   <tr key={ep.id} className="border-b border-gray-50 hover:bg-gray-50 group">
                     <td className="py-2 px-2 text-gray-400 font-mono text-xs">#{ep.episode_number ?? '—'}</td>
-                    <td className="py-2 px-2 text-gray-700">{ep.title}</td>
+                    <td className="py-2 px-2 text-gray-700">
+                      {ep.id === topEpId && <span className="mr-1">⭐</span>}
+                      {ep.title}
+                    </td>
                     <td className="py-2 px-2 text-gray-500">{ep.published_date ?? '—'}</td>
                     <td className="py-2 px-2 text-right font-medium">{formatNumber(ep.views)}</td>
                     <td className="py-2 px-2 text-right text-gray-600">{formatNumber(ep.lead_magnet_downloads)}</td>
@@ -319,6 +364,34 @@ export default function NewsletterPage() {
                 ))}
               </tbody>
             </table>
+
+            {/* Episode comparison (5d) — only shown when multiple episodes */}
+            {episodes.length > 1 && (() => {
+              const maxViews = Math.max(...episodes.map(e => e.views ?? 0))
+              const sorted = [...episodes].sort((a, b) => (b.views ?? 0) - (a.views ?? 0))
+              return (
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Comparativa de episodios</div>
+                  {sorted.map(ep => {
+                    const pct = maxViews > 0 ? ((ep.views ?? 0) / maxViews) * 100 : 0
+                    return (
+                      <div key={ep.id} className="mb-2.5">
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-gray-600 truncate max-w-[70%]">
+                            {ep.id === topEpId && <span className="mr-1">⭐</span>}
+                            {ep.episode_number ? `#${ep.episode_number} ` : ''}{ep.title}
+                          </span>
+                          <span className="text-gray-500 font-medium shrink-0 ml-2">{formatNumber(ep.views ?? 0)} views</span>
+                        </div>
+                        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-orange-400 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })()}
           </Card>
         </>
       )}

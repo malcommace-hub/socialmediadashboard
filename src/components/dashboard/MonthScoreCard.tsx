@@ -115,10 +115,14 @@ export function MonthScoreCard({ current, history }: MonthScoreCardProps) {
       { label: 'Tendencia', weight: Math.round(wTend * 100), score: Math.round(sTend), curr: null, avg: null, pct: false },
     ]
 
-    return { score, isOnlyMonth, factors: factors.slice(0, 4), dims }
+    const idx = history.findIndex(h => h.year === current.year && h.month === current.month)
+    const priorSlice = idx > 0 ? history.slice(Math.max(0, idx - 3), idx) : []
+    const histMonths = priorSlice.filter(h => (h.igImpressions + h.liImpressions + h.ttViews) > 0).length
+
+    return { score, isOnlyMonth, factors: factors.slice(0, 4), dims, histMonths }
   }, [current, history])
 
-  const { score, isOnlyMonth, factors, dims } = result
+  const { score, isOnlyMonth, factors, dims, histMonths } = result
 
   const radius = 40
   const circ = 2 * Math.PI * radius
@@ -153,19 +157,30 @@ export function MonthScoreCard({ current, history }: MonthScoreCardProps) {
             <span className="text-[10px] text-gray-400 mt-0.5">score</span>
           </div>
           {/* Hover tooltip */}
-          <div className="absolute left-full ml-3 top-0 z-50 hidden group-hover:block w-72 bg-gray-900 text-white text-xs rounded-xl shadow-2xl p-3 pointer-events-none">
+          <div className="absolute left-full ml-3 top-0 z-50 hidden group-hover:block w-80 bg-gray-900 text-white text-xs rounded-xl shadow-2xl p-3 pointer-events-none">
             <div className="font-semibold text-gray-200 mb-2">Desglose del score</div>
             {dims.map(d => (
               <div key={d.label} className="flex items-start justify-between mb-1.5">
                 <span className="text-gray-400 shrink-0">{d.label} <span className="text-gray-600">({d.weight}%)</span></span>
-                <span className="ml-3 text-right">
-                  <span className="font-semibold text-white">{d.score ?? '—'}</span>
-                  {d.curr !== null && d.avg !== null && (
-                    <span className="text-gray-500 ml-1 whitespace-nowrap">{fmtVal(d.curr, d.pct)} / {fmtVal(d.avg, d.pct)}</span>
+                <span className="ml-3 text-right whitespace-nowrap">
+                  {d.curr !== null && d.avg !== null ? (
+                    <>
+                      <span className="text-gray-200">{fmtVal(d.curr, d.pct)}</span>
+                      <span className="text-gray-500"> (prom: {fmtVal(d.avg, d.pct)})</span>
+                      <span className="text-gray-600"> · </span>
+                      <span className="font-semibold text-white">{d.score ?? '—'}/100</span>
+                    </>
+                  ) : (
+                    <span className="font-semibold text-white">{d.score ?? '—'}/100</span>
                   )}
                 </span>
               </div>
             ))}
+            {histMonths < 3 && (
+              <div className="mt-2 pt-2 border-t border-gray-700 text-[10px] text-gray-500">
+                {histMonths === 0 ? '⚠ Sin historial — score base' : histMonths === 1 ? '↻ Estimado — 1 mes de historial' : '↻ Aproximado — 2 meses de historial'}
+              </div>
+            )}
           </div>
         </div>
 
