@@ -31,3 +31,43 @@ body.presentation-mode .bg-white.rounded-2xl {
 body.presentation-mode .presentation-hide {
   display: none !important;
 }
+
+/* Print styles — activated by Imprimir resumen button (window.print()) */
+@media print {
+  /* Hide navigation, controls and interactive elements */
+  .print-hide,
+  aside,
+  nav {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+    color: #111827 !important;
+    font-size: 11pt;
+  }
+
+  main {
+    padding: 0 !important;
+  }
+
+  /* Avoid page breaks inside cards */
+  .bg-white.rounded-2xl,
+  table {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Flatten shadows and borders for clean print */
+  .shadow-sm,
+  .shadow {
+    box-shadow: none !important;
+  }
+
+  a {
+    text-decoration: none !important;
+    color: inherit !important;
+  }
+
+  /* Recharts SVGs print fine — keep them */
+}

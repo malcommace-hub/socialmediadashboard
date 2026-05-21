@@ -7,7 +7,7 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, LabelList,
 } from 'recharts'
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ExternalLink, RefreshCw } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ExternalLink, RefreshCw, Printer } from 'lucide-react'
 import { SkeletonCard } from '@/components/dashboard/SkeletonCard'
 import { clearCache } from '@/lib/queryCache'
 import { MonthScoreCard } from '@/components/dashboard/MonthScoreCard'
@@ -553,14 +553,24 @@ export default function OverviewPage() {
             <RefreshCw size={15} />
           </button>
           {current && (
-            <button
-              onClick={handleCopy}
-              className={`presentation-hide text-sm px-4 py-1.5 rounded-lg font-medium transition-colors ${
-                copied ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {copied ? '✓ Copiado' : 'Copiar resumen'}
-            </button>
+            <>
+              <button
+                onClick={handleCopy}
+                className={`presentation-hide text-sm px-4 py-1.5 rounded-lg font-medium transition-colors ${
+                  copied ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {copied ? '✓ Copiado' : 'Copiar resumen'}
+              </button>
+              <button
+                onClick={() => window.print()}
+                className="presentation-hide flex items-center gap-1.5 text-sm px-4 py-1.5 rounded-lg font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+                title="Imprimir o guardar como PDF"
+              >
+                <Printer size={14} />
+                Imprimir resumen
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -574,7 +584,7 @@ export default function OverviewPage() {
       ) : (
         <>
           {/* Window + MA selectors */}
-          <div className="flex items-center gap-2 mb-6 flex-wrap">
+          <div className="print-hide flex items-center gap-2 mb-6 flex-wrap">
             <span className="text-xs font-semibold text-gray-400 tracking-wider mr-1">VENTANA</span>
             {WINDOWS.map(w => (
               <button
