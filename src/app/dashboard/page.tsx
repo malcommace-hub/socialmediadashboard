@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { Card } from '@/components/ui/card'
 import { getOverviewHistory, getInstagramTopPosts, getLinkedInTopPosts, getMonthlyNote, upsertMonthlyNote, getPostingHeatmapData } from '@/lib/queries'
+import { calculateMonthScore } from '@/components/dashboard/MonthScoreCard'
 import { formatNumber, formatPercent, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -312,8 +313,12 @@ export default function OverviewPage() {
   const [saveStatus, setSaveStatus] = useState<'' | 'saving' | 'saved'>('')
   const [copied, setCopied] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
+  const [showQModal, setShowQModal] = useState(false)
+  const [qNote, setQNote] = useState('')
+  const [qNoteSaveStatus, setQNoteSaveStatus] = useState<'' | 'saving' | 'saved'>('')
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const qNoteSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const loadHistory = useCallback(() => {
     setLoading(true)
@@ -489,6 +494,42 @@ export default function OverviewPage() {
     return alerts.sort((a, b) => b.magnitude - a.magnitude).slice(0, 4)
   }, [current, history])
 
+  const qClose = useMemo(() => {
+    if (!current || ![3, 6, 9, 12].includes(current.month)) return null
+    const curQ = Math.ceil(current.month / 3)
+    const qYear = current.year
+    const qMonths = [(curQ - 1) * 3 + 1, (curQ - 1) * 3 + 2, curQ * 3]
+    const allPresent = qMonths.every(m =>
+      history.some(h => h.year === qYear && h.month === m && (h.igImpressions + h.liImpressions + h.ttViews) > 0)
+    )
+    if (!allPresent) return null
+    const qData = qMonths.map(m => history.find(h => h.year === qYear && h.month === m)!)
+    const scores = qData.map(h => calculateMonthScore(h, history).score)
+    const avgScore = Math.round(scores.reduce((a, s) => a + s, 0) / scores.length)
+    const igQTop = igTop.filter(p => qMonths.includes(p.month)).slice(0, 3)
+    const liQTop = liTop.filter(p => qMonths.includes(p.month)).slice(0, 3)
+    return { curQ, qYear, qMonths, qData, scores, avgScore, igQTop, liQTop }
+  }, [current, history, igTop, liTop])
+
+  useEffect(() => {
+    if (!showQModal || !qClose) return
+    setQNote('')
+    setQNoteSaveStatus('')
+    getMonthlyNote(qClose.qYear, 99).then(d => setQNote(d?.content ?? '')).catch(() => {})
+  }, [showQModal, qClose])
+
+  function handleQNoteChange(value: string) {
+    setQNote(value)
+    setQNoteSaveStatus('saving')
+    if (qNoteSaveTimer.current) clearTimeout(qNoteSaveTimer.current)
+    qNoteSaveTimer.current = setTimeout(async () => {
+      if (!qClose) return
+      await upsertMonthlyNote(qClose.qYear, 99, value).catch(() => {})
+      setQNoteSaveStatus('saved')
+      setTimeout(() => setQNoteSaveStatus(''), 2000)
+    }, 1500)
+  }
+
   function handleCopy() {
     if (!current) return
     const impPct = pctChange(curImp, prevImp)
@@ -538,8 +579,129 @@ export default function OverviewPage() {
     document.body.removeChild(ta)
   }
 
+  const scoreColor = (s: number) => s >= 80 ? 'text-emerald-500' : s >= 60 ? 'text-green-500' : s >= 40 ? 'text-amber-500' : 'text-red-500'
+
   return (
     <div className="p-8 max-w-7xl mx-auto">
+
+      {/* Q Close Modal */}
+      {showQModal && qClose && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setShowQModal(false)}>
+          <div
+            className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-6 pt-6 pb-4 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900">Cierre Q{qClose.curQ} {qClose.qYear}</h2>
+              <button onClick={() => setShowQModal(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+            </div>
+            <div className="px-6 py-5 space-y-6">
+              {/* Metrics table */}
+              {qBanner && (
+                <div>
+                  <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Métricas del Q</div>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-100">
+                        <th className="text-left py-1.5 text-xs font-medium text-gray-400">Métrica</th>
+                        <th className="text-right py-1.5 text-xs font-medium text-gray-400">Q{qClose.curQ} {qClose.qYear}</th>
+                        <th className="text-right py-1.5 text-xs font-medium text-gray-400">Q{qBanner.prevQNum} ant.</th>
+                        <th className="text-right py-1.5 text-xs font-medium text-gray-400">Cambio</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        { label: 'Impresiones', cur: qBanner.curImpQ, prev: qBanner.prevImpQ, fmt: formatNumber },
+                        { label: 'Nuevos seguidores', cur: qBanner.curFollQ, prev: qBanner.prevFollQ, fmt: formatNumber },
+                      ].map(({ label, cur, prev, fmt }) => {
+                        const chg = prev > 0 ? ((cur - prev) / prev) * 100 : null
+                        return (
+                          <tr key={label} className="border-b border-gray-50">
+                            <td className="py-2 text-gray-700">{label}</td>
+                            <td className="py-2 text-right font-medium">{fmt(cur)}</td>
+                            <td className="py-2 text-right text-gray-500">{fmt(prev)}</td>
+                            <td className={`py-2 text-right font-semibold ${chg === null ? 'text-gray-400' : chg >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                              {chg !== null ? `${chg >= 0 ? '+' : ''}${chg.toFixed(1)}%` : '—'}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                      {qBanner.curERQ !== null && (
+                        <tr className="border-b border-gray-50">
+                          <td className="py-2 text-gray-700">ER% promedio</td>
+                          <td className="py-2 text-right font-medium">{qBanner.curERQ.toFixed(2)}%</td>
+                          <td className="py-2 text-right text-gray-500">{qBanner.prevERQ !== null ? `${qBanner.prevERQ.toFixed(2)}%` : '—'}</td>
+                          <td className={`py-2 text-right font-semibold ${qBanner.prevERQ === null ? 'text-gray-400' : qBanner.curERQ >= qBanner.prevERQ ? 'text-emerald-600' : 'text-red-500'}`}>
+                            {qBanner.prevERQ !== null ? `${qBanner.curERQ >= qBanner.prevERQ ? '+' : ''}${(qBanner.curERQ - qBanner.prevERQ).toFixed(2)}pp` : '—'}
+                          </td>
+                        </tr>
+                      )}
+                      <tr>
+                        <td className="py-2 text-gray-700">Score promedio del Q</td>
+                        <td colSpan={2} className={`py-2 text-right font-bold text-lg ${scoreColor(qClose.avgScore)}`}>{qClose.avgScore}</td>
+                        <td className="py-2 text-right text-xs text-gray-400">{qClose.scores.join(' · ')}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Top posts */}
+              {(qClose.igQTop.length > 0 || qClose.liQTop.length > 0) && (
+                <div>
+                  <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Top posts del Q</div>
+                  <div className="space-y-1.5">
+                    {qClose.igQTop.map((p, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs">
+                        <span className="bg-rose-100 text-rose-600 font-semibold px-1.5 py-0.5 rounded shrink-0">IG</span>
+                        <span className="text-gray-700 truncate flex-1">{p.description || '—'}</span>
+                        <span className="text-gray-500 shrink-0">{shortMonthLabel(p.year, p.month)} · {formatNumber(p.views)} views · {p.er.toFixed(1)}% ER</span>
+                      </div>
+                    ))}
+                    {qClose.liQTop.map((p, i) => (
+                      <div key={i} className="flex items-center gap-2 text-xs">
+                        <span className="bg-blue-100 text-blue-600 font-semibold px-1.5 py-0.5 rounded shrink-0">LI</span>
+                        <span className="text-gray-700 truncate flex-1">{p.title || '—'}</span>
+                        <span className="text-gray-500 shrink-0">{shortMonthLabel(p.year, p.month)} · {formatNumber(p.impressions)} impr. · {p.er.toFixed(1)}% ER</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Q note */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Nota editorial del Q</div>
+                  <span className="text-xs h-4">
+                    {qNoteSaveStatus === 'saving' && <span className="text-gray-400">Guardando...</span>}
+                    {qNoteSaveStatus === 'saved' && <span className="text-emerald-500">Guardado ✓</span>}
+                  </span>
+                </div>
+                <textarea
+                  value={qNote}
+                  onChange={e => handleQNoteChange(e.target.value)}
+                  placeholder="Balance del Q, aprendizajes, prioridades para el próximo trimestre..."
+                  className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm leading-relaxed text-gray-700 placeholder-gray-300 resize-none focus:outline-none focus:border-gray-300"
+                  rows={4}
+                />
+              </div>
+
+              <div className="flex justify-between items-center pt-2 border-t border-gray-100">
+                <button
+                  onClick={() => window.print()}
+                  className="flex items-center gap-1.5 text-sm px-4 py-1.5 rounded-lg font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+                >
+                  <Printer size={14} />
+                  Imprimir cierre del Q
+                </button>
+                <button onClick={() => setShowQModal(false)} className="text-sm text-gray-400 hover:text-gray-600 px-3 py-1.5">Cerrar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">
           Overview general{current ? ` — ${shortMonthLabel(current.year, current.month)}` : ''}
@@ -611,13 +773,23 @@ export default function OverviewPage() {
           {/* Q banner (collapsible) */}
           {qBanner && (
             <div className="mb-6">
-              <button
-                onClick={() => setQOpen(o => !o)}
-                className="flex items-center gap-1.5 text-xs font-bold text-indigo-700 tracking-wider mb-2 hover:text-indigo-900 transition-colors"
-              >
-                Q{qBanner.curQ} {qBanner.year}
-                {qOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-              </button>
+              <div className="flex items-center gap-3 mb-2">
+                <button
+                  onClick={() => setQOpen(o => !o)}
+                  className="flex items-center gap-1.5 text-xs font-bold text-indigo-700 tracking-wider hover:text-indigo-900 transition-colors"
+                >
+                  Q{qBanner.curQ} {qBanner.year}
+                  {qOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                </button>
+                {qClose && (
+                  <button
+                    onClick={() => setShowQModal(true)}
+                    className="text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2.5 py-0.5 rounded-lg transition-colors"
+                  >
+                    Ver cierre del Q →
+                  </button>
+                )}
+              </div>
               {qOpen && (
                 <div className="bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-100 rounded-2xl px-5 py-3 flex flex-wrap items-center gap-x-5 gap-y-2">
                   <div className="hidden sm:block w-px h-4 bg-indigo-200" />
