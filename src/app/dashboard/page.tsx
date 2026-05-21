@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { Card } from '@/components/ui/card'
-import { getOverviewHistory, getInstagramTopPosts, getLinkedInTopPosts, getMonthlyNote, upsertMonthlyNote } from '@/lib/queries'
+import { getOverviewHistory, getInstagramTopPosts, getLinkedInTopPosts, getMonthlyNote, upsertMonthlyNote, getPostingHeatmapData } from '@/lib/queries'
 import { formatNumber, formatPercent, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
@@ -166,6 +166,128 @@ function SimpleBarChart({
   )
 }
 
+// ─── Publication heatmap ───────────────────────
+
+type HeatmapPost = { date: string; title: string | null }
+type HeatmapInput = { ig: HeatmapPost[]; li: HeatmapPost[] } | null
+
+const MONTH_ABBR = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
+
+function cellColor(count: number): string {
+  if (count === 0) return 'bg-gray-100'
+  if (count === 1) return 'bg-emerald-200'
+  if (count <= 3) return 'bg-emerald-400'
+  return 'bg-emerald-600'
+}
+
+function buildHeatmapGrid(year: number, posts: HeatmapPost[]) {
+  const NUM_WEEKS = 53
+  const counts: number[] = new Array(NUM_WEEKS).fill(0)
+  const titles: string[][] = Array.from({ length: NUM_WEEKS }, () => [])
+  const weekDates: { start: Date; end: Date }[] = []
+  const startOfYear = new Date(Date.UTC(year, 0, 1))
+
+  for (let w = 0; w < NUM_WEEKS; w++) {
+    const s = new Date(startOfYear.getTime() + w * 7 * 86400000)
+    const e = new Date(s.getTime() + 6 * 86400000)
+    weekDates.push({ start: s, end: e })
+  }
+
+  for (const p of posts) {
+    const d = new Date(p.date + 'T12:00:00Z')
+    if (d.getUTCFullYear() !== year) continue
+    const doy = Math.floor((d.getTime() - startOfYear.getTime()) / 86400000)
+    const wk = Math.min(Math.floor(doy / 7), NUM_WEEKS - 1)
+    counts[wk]++
+    if (p.title) titles[wk].push(p.title.slice(0, 30))
+  }
+
+  const monthLabels: { week: number; label: string }[] = []
+  for (let m = 0; m < 12; m++) {
+    const first = new Date(Date.UTC(year, m, 1))
+    if (first.getUTCFullYear() !== year) continue
+    const doy = Math.floor((first.getTime() - startOfYear.getTime()) / 86400000)
+    monthLabels.push({ week: Math.floor(doy / 7), label: MONTH_ABBR[m] })
+  }
+
+  return { counts, titles, weekDates, monthLabels }
+}
+
+function HeatmapRow({ label, counts, titles, weekDates }: {
+  label: string
+  counts: number[]
+  titles: string[][]
+  weekDates: { start: Date; end: Date }[]
+}) {
+  const fmt = (d: Date) => `${d.getUTCDate()}/${d.getUTCMonth() + 1}`
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-[10px] font-medium text-gray-400 w-5 shrink-0">{label}</span>
+      <div className="flex gap-[2px]">
+        {counts.map((count, wk) => {
+          const titles2 = titles[wk]
+          const { start, end } = weekDates[wk]
+          const tip = `Sem ${fmt(start)}–${fmt(end)} · ${count} post${count !== 1 ? 's' : ''}${titles2.length ? '\n' + titles2.join('\n') : ''}`
+          return (
+            <div
+              key={wk}
+              className={`w-[10px] h-[10px] rounded-[2px] shrink-0 ${cellColor(count)}`}
+              title={tip}
+            />
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function PublicationHeatmap({ year, data }: { year: number; data: HeatmapInput }) {
+  if (!data) return <div className="text-xs text-gray-400 py-3">Cargando actividad...</div>
+
+  const igGrid = buildHeatmapGrid(year, data.ig)
+  const liGrid = buildHeatmapGrid(year, data.li)
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm overflow-x-auto">
+      {/* Month labels row */}
+      <div className="flex gap-[2px] mb-1 ml-[26px]">
+        {igGrid.monthLabels.map(({ week, label }) => (
+          <div
+            key={label}
+            className="text-[9px] text-gray-400 absolute"
+            style={{ marginLeft: week * 12 }}
+          >
+            {label}
+          </div>
+        ))}
+      </div>
+      {/* Spacer for month labels */}
+      <div className="relative h-4 mb-1 ml-[26px]">
+        {igGrid.monthLabels.map(({ week, label }) => (
+          <span
+            key={label}
+            className="absolute text-[9px] text-gray-400"
+            style={{ left: week * 12 }}
+          >
+            {label}
+          </span>
+        ))}
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <HeatmapRow label="IG" counts={igGrid.counts} titles={igGrid.titles} weekDates={igGrid.weekDates} />
+        <HeatmapRow label="LI" counts={liGrid.counts} titles={liGrid.titles} weekDates={liGrid.weekDates} />
+      </div>
+      <div className="flex items-center gap-2 mt-3 pt-2 border-t border-gray-50">
+        <span className="text-[10px] text-gray-400">Menos</span>
+        {[0, 1, 2, 4].map(n => (
+          <div key={n} className={`w-[10px] h-[10px] rounded-[2px] ${cellColor(n)}`} />
+        ))}
+        <span className="text-[10px] text-gray-400">Más</span>
+      </div>
+    </div>
+  )
+}
+
 // ─── Main page ─────────────────────────────────
 
 export default function OverviewPage() {
@@ -181,6 +303,10 @@ export default function OverviewPage() {
   const [liTop, setLiTop] = useState<LiTop[]>([])
   const [topOpen, setTopOpen] = useState(false)
   const [qOpen, setQOpen] = useState(true)
+  const [heatmapOpen, setHeatmapOpen] = useState(false)
+
+  type HeatmapData = Awaited<ReturnType<typeof getPostingHeatmapData>>
+  const [heatmapData, setHeatmapData] = useState<HeatmapData | null>(null)
 
   const [note, setNote] = useState('')
   const [saveStatus, setSaveStatus] = useState<'' | 'saving' | 'saved'>('')
@@ -217,6 +343,12 @@ export default function OverviewPage() {
     Promise.all([getInstagramTopPosts(selectedYear), getLinkedInTopPosts(selectedYear)])
       .then(([ig, li]) => { setIgTop(ig); setLiTop(li) })
       .catch(() => {})
+  }, [selectedYear])
+
+  useEffect(() => {
+    if (!selectedYear) return
+    setHeatmapData(null)
+    getPostingHeatmapData(selectedYear).then(setHeatmapData).catch(() => {})
   }, [selectedYear])
 
   useEffect(() => {
@@ -578,6 +710,22 @@ export default function OverviewPage() {
                     )
                   })}
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* Publication heatmap */}
+          {selectedYear && (
+            <div className="mb-6">
+              <button
+                onClick={() => setHeatmapOpen(o => !o)}
+                className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 hover:text-gray-700 transition-colors"
+              >
+                Actividad de publicación {selectedYear}
+                {heatmapOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              </button>
+              {heatmapOpen && (
+                <PublicationHeatmap year={selectedYear} data={heatmapData} />
               )}
             </div>
           )}

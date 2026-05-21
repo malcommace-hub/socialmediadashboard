@@ -578,6 +578,17 @@ export async function upsertMonthlyNote(year: number, month: number, content: st
     .upsert({ year, month, content, updated_at: new Date().toISOString() }, { onConflict: 'year,month' })
 }
 
+export async function getPostingHeatmapData(year: number) {
+  const [ig, li] = await Promise.all([
+    supabase.from('instagram_posts').select('post_date,description,type').eq('year', year).not('post_date', 'is', null),
+    supabase.from('linkedin_posts').select('post_date,title').eq('year', year).not('post_date', 'is', null),
+  ])
+  return {
+    ig: (ig.data ?? []).map(p => ({ date: p.post_date as string, title: (p.description || null) as string | null })),
+    li: (li.data ?? []).map(p => ({ date: p.post_date as string, title: (p.title || null) as string | null })),
+  }
+}
+
 export async function getLinkedInTopPosts(year: number, limit = 12) {
   const { data } = await supabase
     .from('linkedin_posts')
