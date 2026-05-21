@@ -235,6 +235,25 @@ export default function InstagramPage() {
     return parts.join(' · ')
   }, [year, month, stats, prevH])
 
+  // Computed client-side from already-loaded posts — avoids a redundant extra query
+  const typeBreakdown = useMemo(() => {
+    const posts = (stats?.posts ?? []).filter(p => !(p.is_manual && p.type === 'Collab'))
+    const byType: Record<string, { count: number; totalViews: number; totalER: number }> = {}
+    for (const p of posts) {
+      if (!byType[p.type]) byType[p.type] = { count: 0, totalViews: 0, totalER: 0 }
+      byType[p.type].count++
+      byType[p.type].totalViews += p.views ?? 0
+      byType[p.type].totalER += erForPost(p)
+    }
+    return Object.entries(byType)
+      .map(([type, d]) => ({
+        type, count: d.count,
+        avgViews: d.count ? d.totalViews / d.count : 0,
+        avgER: d.count ? d.totalER / d.count : 0,
+      }))
+      .sort((a, b) => b.avgViews - a.avgViews)
+  }, [stats])
+
   const chartCardCls = 'bg-white rounded-2xl border border-gray-100 p-4 shadow-sm'
 
   return (
@@ -512,6 +531,37 @@ export default function InstagramPage() {
               </div>
             )}
           </Card>
+
+          {/* Content type breakdown */}
+          {typeBreakdown.length >= 2 && (
+            <Card>
+              <CardHeader><CardTitle>Rendimiento por tipo de contenido</CardTitle></CardHeader>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      <th className="text-left py-2 px-3 text-xs font-medium text-gray-400">Tipo</th>
+                      <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Posts</th>
+                      <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Views promedio</th>
+                      <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">ER% promedio</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {typeBreakdown.map(row => (
+                      <tr key={row.type} className="border-b border-gray-50 hover:bg-gray-50">
+                        <td className="py-2 px-3">
+                          <Badge variant={(row.type.toLowerCase() as 'reel' | 'post' | 'collab' | 'story' | 'manual') || 'default'} className="text-xs">{row.type}</Badge>
+                        </td>
+                        <td className="py-2 px-3 text-right text-gray-700">{row.count}</td>
+                        <td className="py-2 px-3 text-right font-medium">{formatNumber(Math.round(row.avgViews))}</td>
+                        <td className="py-2 px-3 text-right text-gray-600">{formatPercent(row.avgER)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
 
           {/* Regular posts table */}
           <Card>
