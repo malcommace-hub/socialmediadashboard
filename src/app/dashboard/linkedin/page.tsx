@@ -10,8 +10,20 @@ import { Trash2, ExternalLink, ChevronUp, ChevronDown, Upload, Plus, PencilLine 
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LabelList, AreaChart, Area,
+  ScatterChart, Scatter, ZAxis, ReferenceLine,
 } from 'recharts'
 import Link from 'next/link'
+
+function ScatterTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: { desc: string; x: number; y: number } }> }) {
+  if (!active || !payload?.length) return null
+  const pt = payload[0].payload
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-2 text-xs shadow-lg">
+      <div className="font-medium text-gray-800 max-w-[160px] truncate">{pt.desc}</div>
+      <div className="text-gray-500 mt-0.5">{formatNumber(pt.x)} impr. · {pt.y.toFixed(2)}% ER</div>
+    </div>
+  )
+}
 
 type SortKey = 'impressions' | 'interactions' | 'er'
 type SortDir = 'asc' | 'desc'
@@ -151,11 +163,17 @@ export default function LinkedInPage() {
     const ma = movingAvg(vals, 3)
     return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: d.interactions, ma: ma[i] }))
   }, [histLast])
-  const follChart = useMemo(() => {
-    const vals = histLast.map(d => d.newFollowers)
-    const ma = movingAvg(vals, 3)
-    return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: d.newFollowers, ma: ma[i] }))
-  }, [histLast])
+  const liScatterData = useMemo(() => {
+    type Pt = { x: number; y: number; desc: string }
+    const pts: Pt[] = posts.map(p => ({
+      x: p.impressions,
+      y: +(p.er_decimal * 100).toFixed(2),
+      desc: (p.title || '(sin título)').slice(0, 40),
+    }))
+    const avgX = pts.length ? pts.reduce((a, p) => a + p.x, 0) / pts.length : 0
+    const avgY = pts.length ? pts.reduce((a, p) => a + p.y, 0) / pts.length : 0
+    return { pts, avgX, avgY }
+  }, [posts])
   const erChart = useMemo(() => {
     const vals = histLast.map(d => d.er)
     const ma = movingAvg(vals, 3)
@@ -291,21 +309,33 @@ export default function LinkedInPage() {
                 </ResponsiveContainer>
               </div>
 
-              {/* Nuevos seguidores */}
+              {/* Scatter: Alcance vs Engagement (replaces Nuevos seguidores) */}
               <div className={chartCardCls}>
-                <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Nuevos seguidores</div>
-                <ResponsiveContainer width="100%" height={180}>
-                  <ComposedChart data={follChart} barCategoryGap="22%" margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} />
-                    <Tooltip formatter={(v, n) => [formatNumber(Number(v)), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                    <Bar dataKey="value" name="Nuevos seguidores" fill="#dbeafe" radius={[4, 4, 0, 0]}>
-                      <LabelList dataKey="value" position="top" style={{ fontSize: 10, fontWeight: 700, fill: '#374151' }} formatter={(v: unknown) => formatNumber(Number(v))} />
-                    </Bar>
-                    <Line type="monotone" dataKey="ma" name="Media 3m" stroke="#1d4ed8" strokeDasharray="5 3" dot={false} strokeWidth={2} connectNulls />
-                  </ComposedChart>
-                </ResponsiveContainer>
+                <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Alcance vs Engagement</div>
+                {posts.length >= 5 ? (
+                  <div className="relative">
+                    <ResponsiveContainer width="100%" height={180}>
+                      <ScatterChart margin={{ top: 16, right: 8, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+                        <XAxis type="number" dataKey="x" name="Impr." tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} />
+                        <YAxis type="number" dataKey="y" name="ER%" tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => `${v}%`} axisLine={false} tickLine={false} width={36} />
+                        <ZAxis range={[40, 40]} />
+                        <Tooltip content={<ScatterTooltip />} />
+                        <ReferenceLine x={liScatterData.avgX} stroke="#d1d5db" strokeDasharray="4 2" strokeWidth={1} />
+                        <ReferenceLine y={liScatterData.avgY} stroke="#d1d5db" strokeDasharray="4 2" strokeWidth={1} />
+                        <Scatter name="Posts" data={liScatterData.pts} fill="#0ea5e9" opacity={0.85} />
+                      </ScatterChart>
+                    </ResponsiveContainer>
+                    <span className="absolute top-5 right-2 text-[9px] font-medium text-gray-400 pointer-events-none">Ideal</span>
+                    <span className="absolute top-5 left-10 text-[9px] font-medium text-gray-400 pointer-events-none">Nicho</span>
+                    <span className="absolute bottom-1 right-2 text-[9px] font-medium text-gray-400 pointer-events-none">Viral superficial</span>
+                    <span className="absolute bottom-1 left-10 text-[9px] font-medium text-gray-400 pointer-events-none">A mejorar</span>
+                  </div>
+                ) : (
+                  <div className="h-40 flex items-center justify-center text-xs text-gray-400 text-center px-4">
+                    Cargá al menos 5 posts para ver este análisis
+                  </div>
+                )}
               </div>
             </div>
           )}

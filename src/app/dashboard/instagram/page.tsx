@@ -13,6 +13,7 @@ import { Trash2, ExternalLink, Plus, ChevronUp, ChevronDown, PencilLine, Upload 
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LabelList, AreaChart, Area,
+  ScatterChart, Scatter, ZAxis, ReferenceLine,
 } from 'recharts'
 import Link from 'next/link'
 
@@ -27,6 +28,21 @@ function TrendBadge({ value, prev }: { value: number; prev: number | undefined }
     <span className={`text-xs font-semibold ${pos ? 'text-emerald-600' : 'text-red-500'}`}>
       {pos ? '+' : ''}{pct.toFixed(1)}%
     </span>
+  )
+}
+
+const IG_SCATTER_COLORS: Record<string, string> = {
+  Reel: '#ec4899', Post: '#3b82f6', Collab: '#8b5cf6', Story: '#94a3b8',
+}
+
+function ScatterTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: { desc: string; x: number; y: number } }> }) {
+  if (!active || !payload?.length) return null
+  const pt = payload[0].payload
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-2 text-xs shadow-lg">
+      <div className="font-medium text-gray-800 max-w-[160px] truncate">{pt.desc}</div>
+      <div className="text-gray-500 mt-0.5">{formatNumber(pt.x)} views · {pt.y.toFixed(2)}% ER</div>
+    </div>
   )
 }
 
@@ -216,11 +232,21 @@ export default function InstagramPage() {
     const ma = movingAvg(vals, 3)
     return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: d.interactions, ma: ma[i] }))
   }, [histLast])
-  const follChart = useMemo(() => {
-    const vals = histLast.map(d => d.newFollowers)
-    const ma = movingAvg(vals, 3)
-    return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: d.newFollowers, ma: ma[i] }))
-  }, [histLast])
+  const scatterData = useMemo(() => {
+    type Pt = { x: number; y: number; type: string; desc: string }
+    const pts: Pt[] = regularPosts.map(p => ({
+      x: p.views,
+      y: +erForPost(p).toFixed(2),
+      type: p.type,
+      desc: (p.description || '(sin título)').slice(0, 40),
+    }))
+    const avgX = pts.length ? pts.reduce((a, p) => a + p.x, 0) / pts.length : 0
+    const avgY = pts.length ? pts.reduce((a, p) => a + p.y, 0) / pts.length : 0
+    const byType = (['Reel', 'Post', 'Collab', 'Story'] as const)
+      .map(t => ({ type: t as string, pts: pts.filter(p => p.type === t) }))
+      .filter(g => g.pts.length > 0)
+    return { pts, avgX, avgY, byType }
+  }, [regularPosts])
   const erChart = useMemo(() => {
     const vals = histLast.map(d => d.er)
     const ma = movingAvg(vals, 3)
@@ -327,10 +353,61 @@ export default function InstagramPage() {
           {/* Historical charts */}
           {histLast.length >= 1 && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+              {/* 1. Impresiones / Views */}
+              <div className={chartCardCls}>
+                <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Impresiones / Views</div>
+                <ResponsiveContainer width="100%" height={180}>
+                  <AreaChart data={viewsChart} margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="igViewsGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.15} />
+                        <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} />
+                    <Tooltip formatter={(v, n) => [formatNumber(Number(v)), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                    <Area type="monotone" dataKey="value" name="Views" stroke="#f43f5e" fill="url(#igViewsGrad)" strokeWidth={2} dot={{ r: 3, fill: '#f43f5e', strokeWidth: 0 }} />
+                    <Line type="monotone" dataKey="ma" name="Media 3m" stroke="#f43f5e" strokeDasharray="5 3" dot={false} strokeWidth={1.5} connectNulls strokeOpacity={0.6} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* 2. Scatter: Alcance vs Engagement (replaces Nuevos seguidores) */}
+              <div className={chartCardCls}>
+                <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Alcance vs Engagement</div>
+                {regularPosts.length >= 5 ? (
+                  <div className="relative">
+                    <ResponsiveContainer width="100%" height={180}>
+                      <ScatterChart margin={{ top: 16, right: 8, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+                        <XAxis type="number" dataKey="x" name="Views" tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} />
+                        <YAxis type="number" dataKey="y" name="ER%" tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => `${v}%`} axisLine={false} tickLine={false} width={36} />
+                        <ZAxis range={[40, 40]} />
+                        <Tooltip content={<ScatterTooltip />} />
+                        <ReferenceLine x={scatterData.avgX} stroke="#d1d5db" strokeDasharray="4 2" strokeWidth={1} />
+                        <ReferenceLine y={scatterData.avgY} stroke="#d1d5db" strokeDasharray="4 2" strokeWidth={1} />
+                        {scatterData.byType.map(({ type, pts }) => (
+                          <Scatter key={type} name={type} data={pts} fill={IG_SCATTER_COLORS[type] ?? '#6b7280'} opacity={0.85} />
+                        ))}
+                      </ScatterChart>
+                    </ResponsiveContainer>
+                    <span className="absolute top-5 right-2 text-[9px] font-medium text-gray-400 pointer-events-none">Ideal</span>
+                    <span className="absolute top-5 left-10 text-[9px] font-medium text-gray-400 pointer-events-none">Nicho</span>
+                    <span className="absolute bottom-1 right-2 text-[9px] font-medium text-gray-400 pointer-events-none">Viral superficial</span>
+                    <span className="absolute bottom-1 left-10 text-[9px] font-medium text-gray-400 pointer-events-none">A mejorar</span>
+                  </div>
+                ) : (
+                  <div className="h-40 flex items-center justify-center text-xs text-gray-400 text-center px-4">
+                    Cargá al menos 5 posts para ver este análisis
+                  </div>
+                )}
+              </div>
+
+              {/* 3 & 4: Interacciones and Engagement % */}
               {[
-                { title: 'Impresiones / Views', data: viewsChart, color: '#f43f5e', gradId: 'igViewsGrad' },
-                { title: 'Nuevos seguidores', data: follChart, color: '#fb923c', gradId: 'igFollGrad' },
-                { title: 'Interacciones', data: intChart, color: '#f43f5e', gradId: 'igIntGrad' },
+                { title: 'Interacciones', data: intChart, color: '#f43f5e', gradId: 'igIntGrad', isPercent: false },
                 { title: 'Engagement %', data: erChart, color: '#e11d48', gradId: 'igErGrad', isPercent: true },
               ].map(({ title, data, color, gradId, isPercent }) => (
                 <div key={title} className={chartCardCls}>
