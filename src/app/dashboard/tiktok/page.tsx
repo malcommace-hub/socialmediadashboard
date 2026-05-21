@@ -451,18 +451,18 @@ export default function TikTokPage() {
                   </button>
                 )}
                 <Link href="/dashboard/upload"
-                  className="flex items-center gap-1 text-xs bg-gray-700 text-white px-3 py-1 rounded-lg font-medium hover:bg-gray-600">
+                  className="presentation-hide flex items-center gap-1 text-xs bg-gray-700 text-white px-3 py-1 rounded-lg font-medium hover:bg-gray-600">
                   <Upload size={13} /> Subir CSV TikTok
                 </Link>
                 <button onClick={() => setShowAddForm(!showAddForm)}
-                  className="flex items-center gap-1 text-xs bg-emerald-500 text-white px-3 py-1 rounded-lg font-medium hover:bg-emerald-400">
+                  className="presentation-hide flex items-center gap-1 text-xs bg-emerald-500 text-white px-3 py-1 rounded-lg font-medium hover:bg-emerald-400">
                   <Plus size={13} /> Agregar manual
                 </button>
               </div>
             </div>
 
             {showAddForm && (
-              <div className="bg-gray-50 rounded-xl p-4 mb-4 border border-gray-200">
+              <div className="presentation-hide bg-gray-50 rounded-xl p-4 mb-4 border border-gray-200">
                 <div className="text-sm font-medium text-gray-700 mb-3">Nuevo video manual</div>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                   <div className="col-span-2">

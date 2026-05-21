@@ -436,7 +436,7 @@ export default function InstagramPage() {
             </div>
           )}
           {freqBadge !== null && (
-            <div className={`inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-semibold mb-5 ${
+            <div className={`presentation-hide inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-semibold mb-5 ${
               freqBadge >= 3 ? 'bg-emerald-100 text-emerald-700' :
               freqBadge >= 1 ? 'bg-amber-100 text-amber-700' :
               'bg-red-100 text-red-700'
@@ -584,7 +584,7 @@ export default function InstagramPage() {
             <div className="flex items-center justify-between mb-3">
               <CardTitle>Datos del mes (desde la app)</CardTitle>
               <button onClick={() => setEditMonthly(!editMonthly)}
-                className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 font-medium">
+                className="presentation-hide flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 font-medium">
                 <PencilLine size={12} /> {editMonthly ? 'Cancelar' : 'Editar'}
               </button>
             </div>
@@ -660,13 +660,13 @@ export default function InstagramPage() {
                 </p>
               </div>
               <button onClick={() => setShowAddCollabForm(!showAddCollabForm)}
-                className="flex items-center gap-1 text-xs bg-orange-500 text-white px-3 py-1 rounded-lg font-medium hover:bg-orange-400">
+                className="presentation-hide flex items-center gap-1 text-xs bg-orange-500 text-white px-3 py-1 rounded-lg font-medium hover:bg-orange-400">
                 <Plus size={13} /> Agregar collab
               </button>
             </div>
 
             {showAddCollabForm && (
-              <div className="bg-orange-50 rounded-xl p-4 mb-4 border border-orange-200">
+              <div className="presentation-hide bg-orange-50 rounded-xl p-4 mb-4 border border-orange-200">
                 <div className="text-sm font-medium text-gray-700 mb-3">Nuevo contenido collab externo</div>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                   <div className="col-span-2">
@@ -861,18 +861,18 @@ export default function InstagramPage() {
                   </button>
                 )}
                 <Link href="/dashboard/upload"
-                  className="flex items-center gap-1 text-xs bg-rose-500 text-white px-3 py-1 rounded-lg font-medium hover:bg-rose-400">
+                  className="presentation-hide flex items-center gap-1 text-xs bg-rose-500 text-white px-3 py-1 rounded-lg font-medium hover:bg-rose-400">
                   <Upload size={13} /> Subir CSV
                 </Link>
                 <button onClick={() => setShowAddForm(!showAddForm)}
-                  className="flex items-center gap-1 text-xs bg-emerald-500 text-white px-3 py-1 rounded-lg font-medium hover:bg-emerald-400">
+                  className="presentation-hide flex items-center gap-1 text-xs bg-emerald-500 text-white px-3 py-1 rounded-lg font-medium hover:bg-emerald-400">
                   <Plus size={13} /> Agregar manual
                 </button>
               </div>
             </div>
 
             {showAddForm && (
-              <div className="bg-gray-50 rounded-xl p-4 mb-4 border border-gray-200">
+              <div className="presentation-hide bg-gray-50 rounded-xl p-4 mb-4 border border-gray-200">
                 <div className="text-sm font-medium text-gray-700 mb-3">Nuevo post manual</div>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                   <div>

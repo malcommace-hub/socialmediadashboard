@@ -28,3 +28,6 @@ body.presentation-mode .text-sm {
 body.presentation-mode .bg-white.rounded-2xl {
   padding: 1.5rem;
 }
+body.presentation-mode .presentation-hide {
+  display: none !important;
+}

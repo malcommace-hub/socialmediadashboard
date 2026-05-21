@@ -305,7 +305,7 @@ export default function LinkedInPage() {
 
           {/* Publication streak badge */}
           {streak >= 2 && (
-            <div className="mb-5">
+            <div className="presentation-hide mb-5">
               <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full ${
                 streak >= 4 ? 'bg-orange-50 text-orange-600' : 'bg-blue-50 text-blue-600'
               }`}>
@@ -449,7 +449,7 @@ export default function LinkedInPage() {
           <Card className="mb-6">
             <div className="flex items-center justify-between mb-3">
               <CardTitle>Totales del mes</CardTitle>
-              <button onClick={() => setEditMonthly(!editMonthly)} className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 font-medium">
+              <button onClick={() => setEditMonthly(!editMonthly)} className="presentation-hide flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 font-medium">
                 <PencilLine size={12} /> {editMonthly ? 'Cancelar' : 'Editar'}
               </button>
             </div>
@@ -533,7 +533,7 @@ export default function LinkedInPage() {
                   </button>
                 )}
                 <Link href="/dashboard/upload"
-                  className="flex items-center gap-1 text-xs bg-blue-600 text-white px-3 py-1 rounded-lg font-medium hover:bg-blue-500">
+                  className="presentation-hide flex items-center gap-1 text-xs bg-blue-600 text-white px-3 py-1 rounded-lg font-medium hover:bg-blue-500">
                   <Upload size={13} /> Subir CSV LinkedIn
                 </Link>
               </div>
