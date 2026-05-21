@@ -1053,7 +1053,7 @@ export default function InstagramPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100">
-                    <th className="w-8 py-2 px-2">
+                    <th className="ph-col w-8 py-2 px-2">
                       <input
                         type="checkbox"
                         className="rounded"
@@ -1078,8 +1078,8 @@ export default function InstagramPage() {
                       onClick={() => toggleSort('er')}>
                       <span className="flex items-center justify-end gap-1">ER% <SortIcon k="er" /></span>
                     </th>
-                    <th className="text-right py-2 px-2 text-xs font-medium text-gray-400">Link</th>
-                    <th className="py-2 px-2 w-8" />
+                    <th className="ph-col text-right py-2 px-2 text-xs font-medium text-gray-400">Link</th>
+                    <th className="ph-col py-2 px-2 w-8" />
                   </tr>
                 </thead>
                 <tbody>
@@ -1088,9 +1088,11 @@ export default function InstagramPage() {
                       No hay posts. Subí un CSV o agregá uno manual.
                     </td></tr>
                   )}
-                  {sorted.map((post, idx) => (
+                  {sorted.map((post, idx) => {
+                    if (presentationMode && idx >= 8) return null
+                    return (
                     <tr key={post.id} className="border-b border-gray-50 hover:bg-gray-50 group">
-                      <td className="py-2 px-2">
+                      <td className="ph-col py-2 px-2">
                         <input type="checkbox" className="rounded" checked={selected.has(post.id)} onChange={() => toggleSelect(post.id)} />
                       </td>
                       <td className="py-2 px-2">
@@ -1120,19 +1122,26 @@ export default function InstagramPage() {
                       <td className="py-2 px-2 text-right font-medium text-gray-800">{formatNumber(post.views)}</td>
                       <td className="py-2 px-2 text-right text-gray-600">{formatNumber(post.likes)}</td>
                       <td className="py-2 px-2 text-right font-medium text-emerald-600">{formatPercent(erForPost(post))}</td>
-                      <td className="py-2 px-2 text-right">
+                      <td className="ph-col py-2 px-2 text-right">
                         {post.permalink
                           ? <a href={post.permalink} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 inline-flex"><ExternalLink size={14} /></a>
                           : '—'}
                       </td>
-                      <td className="py-2 px-2 text-right">
+                      <td className="ph-col py-2 px-2 text-right">
                         <button onClick={() => handleDelete(post.id)}
                           className="text-gray-200 hover:text-red-500 group-hover:text-gray-400 transition-colors">
                           <Trash2 size={14} />
                         </button>
                       </td>
                     </tr>
-                  ))}
+                  )})}
+                  {presentationMode && sorted.length > 8 && (
+                    <tr>
+                      <td colSpan={10} className="py-2 px-2 text-xs text-gray-400 text-center">
+                        y {sorted.length - 8} más...
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

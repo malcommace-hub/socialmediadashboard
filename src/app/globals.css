@@ -32,6 +32,29 @@ body.presentation-mode .presentation-hide {
   display: none !important;
 }
 
+/* Presentation mode — table density improvements */
+body.presentation-mode table td,
+body.presentation-mode table th {
+  padding-top: 0.875rem !important;
+  padding-bottom: 0.875rem !important;
+}
+
+/* Presentation mode — hide low-value columns (link/checkbox via ph-col class) */
+body.presentation-mode .ph-col {
+  display: none !important;
+}
+
+/* Presentation mode — Recharts: larger axis labels and legend text */
+body.presentation-mode .recharts-cartesian-axis-tick text {
+  font-size: 13px !important;
+}
+body.presentation-mode .recharts-legend-item-text {
+  font-size: 13px !important;
+}
+body.presentation-mode .recharts-label {
+  font-size: 13px !important;
+}
+
 /* Print styles — activated by Imprimir resumen button (window.print()) */
 @media print {
   /* Hide navigation, controls and interactive elements */
