@@ -346,6 +346,35 @@ export async function getInstagramHistory() {
   })
 }
 
+export async function getInstagramCollabComparison() {
+  const { data } = await supabase
+    .from('instagram_posts')
+    .select('collab_account, views, impressions, likes, comments, shares, saves')
+    .eq('type', 'Collab')
+  const rows = data ?? []
+  const withAccount = rows.filter(r => r.collab_account && r.collab_account.trim() !== '')
+  const withoutAccount = rows.length - withAccount.length
+  const byAccount: Record<string, { count: number; totalViews: number; totalER: number }> = {}
+  for (const r of withAccount) {
+    const acct = r.collab_account!
+    if (!byAccount[acct]) byAccount[acct] = { count: 0, totalViews: 0, totalER: 0 }
+    byAccount[acct].count++
+    byAccount[acct].totalViews += r.views ?? 0
+    const imp = r.impressions ?? r.views ?? 0
+    const interactions = (r.likes ?? 0) + (r.comments ?? 0) + (r.shares ?? 0) + (r.saves ?? 0)
+    byAccount[acct].totalER += imp > 0 ? (interactions / imp) * 100 : 0
+  }
+  const comparison = Object.entries(byAccount)
+    .map(([account, d]) => ({
+      account,
+      count: d.count,
+      avgViews: d.count ? d.totalViews / d.count : 0,
+      avgER: d.count ? d.totalER / d.count : 0,
+    }))
+    .sort((a, b) => b.avgViews - a.avgViews)
+  return { comparison, withoutAccount }
+}
+
 export async function getLinkedInHistory() {
   const [monthly, posts] = await Promise.all([
     supabase.from('linkedin_monthly').select('*').order('year').order('month'),

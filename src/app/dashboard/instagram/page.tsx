@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
   getInstagramStats, getInstagramHistory, deleteInstagramPost,
-  upsertInstagramMonthly, addInstagramPostManual,
+  upsertInstagramMonthly, addInstagramPostManual, getInstagramCollabComparison,
 } from '@/lib/queries'
 import { formatNumber, formatPercent, currentYearMonth, monthLabel, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
 import type { InstagramStats, InstagramPost } from '@/lib/types'
@@ -73,6 +73,19 @@ export default function InstagramPage() {
 
   // New external collab
   const [newCollab, setNewCollab] = useState({ ...emptyNewPost })
+
+  // Collab comparison (all-time, loaded once)
+  type CollabRow = { account: string; count: number; avgViews: number; avgER: number }
+  const [collabComparison, setCollabComparison] = useState<CollabRow[]>([])
+  const [collabWithout, setCollabWithout] = useState(0)
+  const [collabsOpen, setCollabsOpen] = useState(false)
+
+  useEffect(() => {
+    getInstagramCollabComparison().then(({ comparison, withoutAccount }) => {
+      setCollabComparison(comparison)
+      setCollabWithout(withoutAccount)
+    }).catch(() => {})
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -731,6 +744,50 @@ export default function InstagramPage() {
               </table>
             </div>
           </Card>
+
+          {/* Colaboradores comparison (all-time, 2+ accounts required) */}
+          {collabComparison.length >= 2 && (
+            <Card>
+              <div
+                className="flex items-center justify-between cursor-pointer select-none"
+                onClick={() => setCollabsOpen(o => !o)}
+              >
+                <CardTitle>Colaboradores</CardTitle>
+                <span className="text-gray-400">{collabsOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</span>
+              </div>
+              {collabsOpen && (
+                <div className="mt-3">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-100">
+                          <th className="text-left py-2 px-3 text-xs font-medium text-gray-400">Colaborador</th>
+                          <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Collabs</th>
+                          <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Views promedio</th>
+                          <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">ER% promedio</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {collabComparison.map(row => (
+                          <tr key={row.account} className="border-b border-gray-50 hover:bg-gray-50">
+                            <td className="py-2 px-3 font-medium text-orange-600">{row.account}</td>
+                            <td className="py-2 px-3 text-right text-gray-700">{row.count}</td>
+                            <td className="py-2 px-3 text-right font-medium">{formatNumber(Math.round(row.avgViews))}</td>
+                            <td className="py-2 px-3 text-right text-gray-600">{formatPercent(row.avgER)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {collabWithout > 0 && (
+                    <p className="text-xs text-gray-400 mt-2 px-1">
+                      {collabWithout} collab{collabWithout !== 1 ? 's' : ''} sin cuenta registrada no aparece{collabWithout !== 1 ? 'n' : ''} en esta tabla.
+                    </p>
+                  )}
+                </div>
+              )}
+            </Card>
+          )}
         </>
       )}
     </div>
