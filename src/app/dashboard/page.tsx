@@ -623,6 +623,36 @@ export default function OverviewPage() {
 
   const scoreColor = (s: number) => s >= 80 ? 'text-emerald-500' : s >= 60 ? 'text-green-500' : s >= 40 ? 'text-amber-500' : 'text-red-500'
 
+  function handleExportCsv() {
+    if (!current) return
+    const score = calculateMonthScore(current, history).score
+    const label = shortMonthLabel(current.year, current.month)
+    const rows: (string | number)[][] = [
+      ['Mes', label],
+      ['Score del mes', score],
+      [],
+      ['Canal', 'Alcance', 'Interacciones', 'ER%', 'Nuevos seguidores'],
+      ['Instagram', current.igImpressions, current.igInteractions, current.igER ? current.igER.toFixed(2) + '%' : '', current.igNewFollowers],
+      ['LinkedIn', current.liImpressions, current.liInteractions, current.liER ? current.liER.toFixed(2) + '%' : '', current.liNewFollowers],
+      ['TikTok', current.ttViews, current.ttInteractions, '', current.ttNewFollowers],
+      ['Newsletter', current.newsletterViews, '', '', ''],
+      [],
+      ['Total impresiones', current.igImpressions + current.liImpressions + current.ttViews + current.ytViews],
+      ['Total seguidores nuevos', current.igNewFollowers + current.liNewFollowers + current.ttNewFollowers],
+      ['Total interacciones', current.igInteractions + current.liInteractions + current.ttInteractions],
+      ['Posts IG', current.igPostCount],
+      ['Posts LI', current.liPostCount],
+    ]
+    const csv = rows.map(r => r.map(cell => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `seeds-${String(current.month).padStart(2, '0')}-${current.year}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="p-8 max-w-7xl mx-auto">
 
@@ -765,6 +795,13 @@ export default function OverviewPage() {
                 }`}
               >
                 {copied ? '✓ Copiado' : 'Copiar resumen'}
+              </button>
+              <button
+                onClick={handleExportCsv}
+                className="presentation-hide text-sm px-4 py-1.5 rounded-lg font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+                title="Exportar métricas del mes como CSV"
+              >
+                Exportar CSV
               </button>
               <button
                 onClick={() => window.print()}
