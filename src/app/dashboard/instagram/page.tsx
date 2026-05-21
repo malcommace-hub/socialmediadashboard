@@ -35,6 +35,30 @@ const IG_SCATTER_COLORS: Record<string, string> = {
   Reel: '#ec4899', Post: '#3b82f6', Collab: '#8b5cf6',
 }
 
+// Recharts injects cx/cy/value/payload via cloneElement when used as <Line dot={<IgFollowerDot/>}/>
+function IgFollowerDot(props: {
+  cx?: number; cy?: number; value?: number
+  payload?: { pctChange?: number | null }
+  [k: string]: unknown
+}) {
+  const { cx, cy, value, payload } = props
+  if (!value || !cx || !cy) return <g />
+  const pct = payload?.pctChange ?? null
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={3.5} fill="#ec4899" />
+      <text x={cx} y={cy - 8} textAnchor="middle" fontSize={10} fontWeight="bold" fill="#374151">
+        {formatNumber(value)}
+      </text>
+      {pct !== null && (
+        <text x={cx} y={cy - 19} textAnchor="middle" fontSize={9} fill={pct >= 0 ? '#10b981' : '#ef4444'}>
+          {pct >= 0 ? '+' : ''}{pct.toFixed(1)}%
+        </text>
+      )}
+    </g>
+  )
+}
+
 function logTickFmt(v: number): string {
   const n = Math.pow(10, v)
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(0)}M`
@@ -271,6 +295,39 @@ export default function InstagramPage() {
     return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: +d.er.toFixed(2), ma: ma[i] ? +ma[i]!.toFixed(2) : null }))
   }, [histLast])
 
+  const igFollowerChart = useMemo(() => {
+    const real = histLast.filter(d => d.totalFollowers > 0)
+    const pts = real.map((d, i) => ({
+      label: shortMonthLabel(d.year, d.month),
+      followers: d.totalFollowers,
+      pctChange: i > 0 ? ((d.totalFollowers - real[i - 1].totalFollowers) / real[i - 1].totalFollowers) * 100 : null,
+      projected: undefined as number | undefined,
+    }))
+    // 3-month projection from avg % growth of last 6 real history points
+    const allReal = history.filter(d => d.totalFollowers > 0)
+    const projPts: { label: string; projected: number }[] = []
+    if (allReal.length >= 3) {
+      const slice = allReal.slice(-6)
+      const rates: number[] = []
+      for (let i = 1; i < slice.length; i++)
+        rates.push((slice[i].totalFollowers - slice[i - 1].totalFollowers) / slice[i - 1].totalFollowers)
+      const avgRate = rates.length > 0 ? rates.reduce((a, b) => a + b, 0) / rates.length : 0
+      let val = allReal[allReal.length - 1].totalFollowers
+      let { year: y, month: m } = allReal[allReal.length - 1]
+      for (let i = 0; i < 3; i++) {
+        m++; if (m > 12) { m = 1; y++ }
+        val = Math.round(val * (1 + avgRate))
+        projPts.push({ label: shortMonthLabel(y, m), projected: val })
+      }
+    }
+    // Bridge: set projected on the last real point so lines connect
+    if (pts.length > 0 && projPts.length > 0)
+      pts[pts.length - 1] = { ...pts[pts.length - 1], projected: pts[pts.length - 1].followers }
+    const combined: { label: string; followers?: number; projected?: number; pctChange: number | null }[] = [...pts]
+    projPts.forEach(p => combined.push({ label: p.label, projected: p.projected, pctChange: null }))
+    return combined
+  }, [histLast, history])
+
   const summaryText = useMemo(() => {
     const allPosts = stats?.posts ?? []
     const regPosts = allPosts.filter(p => !(p.is_manual && p.type === 'Collab'))
@@ -367,6 +424,30 @@ export default function InstagramPage() {
               </div>
             ))}
           </div>
+
+          {/* Follower evolution */}
+          {igFollowerChart.filter(d => d.followers).length >= 2 && (
+            <div className={chartCardCls + ' mb-4'}>
+              <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">
+                Evolución de seguidores{igFollowerChart.some(d => d.projected && !d.followers) ? ' (incl. proyección)' : ''}
+              </div>
+              <ResponsiveContainer width="100%" height={200}>
+                <ComposedChart data={igFollowerChart} margin={{ top: 36, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} domain={['auto', 'auto']} />
+                  <Tooltip formatter={(v, n) => [formatNumber(Number(v)), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                  <Line type="monotone" dataKey="followers" name="Seguidores" stroke="#ec4899" strokeWidth={2}
+                    dot={<IgFollowerDot /> as unknown as boolean} activeDot={{ r: 5 }} connectNulls={false} />
+                  {igFollowerChart.some(d => d.projected && !d.followers) && (
+                    <Line type="monotone" dataKey="projected" name="Proyección" stroke="#f9a8d4"
+                      strokeWidth={1.5} strokeDasharray="4 3"
+                      dot={{ r: 3, fill: '#f9a8d4', strokeWidth: 0 }} connectNulls />
+                  )}
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          )}
 
           {/* Historical charts */}
           {histLast.length >= 1 && (

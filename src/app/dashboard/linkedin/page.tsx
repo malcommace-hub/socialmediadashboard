@@ -14,6 +14,29 @@ import {
 } from 'recharts'
 import Link from 'next/link'
 
+function LiFollowerDot(props: {
+  cx?: number; cy?: number; value?: number
+  payload?: { pctChange?: number | null }
+  [k: string]: unknown
+}) {
+  const { cx, cy, value, payload } = props
+  if (!value || !cx || !cy) return <g />
+  const pct = payload?.pctChange ?? null
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={3.5} fill="#0ea5e9" />
+      <text x={cx} y={cy - 8} textAnchor="middle" fontSize={10} fontWeight="bold" fill="#374151">
+        {formatNumber(value)}
+      </text>
+      {pct !== null && (
+        <text x={cx} y={cy - 19} textAnchor="middle" fontSize={9} fill={pct >= 0 ? '#10b981' : '#ef4444'}>
+          {pct >= 0 ? '+' : ''}{pct.toFixed(1)}%
+        </text>
+      )}
+    </g>
+  )
+}
+
 function logTickFmt(v: number): string {
   const n = Math.pow(10, v)
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(0)}M`
@@ -197,6 +220,15 @@ export default function LinkedInPage() {
     return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: +d.er.toFixed(2), ma: ma[i] ? +ma[i]!.toFixed(2) : null }))
   }, [histLast])
 
+  const liFollowerChart = useMemo(() => {
+    const real = histLast.filter(d => d.totalFollowers > 0)
+    return real.map((d, i) => ({
+      label: shortMonthLabel(d.year, d.month),
+      followers: d.totalFollowers,
+      pctChange: i > 0 ? ((d.totalFollowers - real[i - 1].totalFollowers) / real[i - 1].totalFollowers) * 100 : null,
+    }))
+  }, [histLast])
+
   const chartCardCls = 'bg-white rounded-2xl border border-gray-100 p-4 shadow-sm'
 
   // For KPI cards, prefer history-derived value for the selected month
@@ -267,6 +299,23 @@ export default function LinkedInPage() {
               </div>
             ))}
           </div>
+
+          {/* Follower evolution */}
+          {liFollowerChart.length >= 2 && (
+            <div className={chartCardCls + ' mb-4'}>
+              <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Evolución de seguidores</div>
+              <ResponsiveContainer width="100%" height={200}>
+                <ComposedChart data={liFollowerChart} margin={{ top: 36, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} domain={['auto', 'auto']} />
+                  <Tooltip formatter={(v, n) => [formatNumber(Number(v)), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                  <Line type="monotone" dataKey="followers" name="Seguidores" stroke="#0ea5e9" strokeWidth={2}
+                    dot={<LiFollowerDot /> as unknown as boolean} activeDot={{ r: 5 }} connectNulls={false} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          )}
 
           {/* Historical charts — 2×2 grid */}
           {histLast.length >= 1 && (
