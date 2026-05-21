@@ -169,6 +169,25 @@ export default function TikTokPage() {
     return ytHistLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: d.views, ma: ma[i] }))
   }, [ytHistLast])
 
+  const summaryText = useMemo(() => {
+    const total = stats?.totalViews ?? 0
+    const bestVideo = [...(stats?.videos ?? [])].sort((a, b) => (b.views ?? 0) - (a.views ?? 0))[0]
+    const parts: string[] = [monthLabel(year, month)]
+    if (total > 0) {
+      parts.push(`${formatNumber(total)} views`)
+      if (prevH?.views) {
+        const pct = pctChange(total, prevH.views)
+        if (pct !== null) parts.push(`${pct >= 0 ? '+' : ''}${pct.toFixed(1)}% vs mes ant.`)
+      }
+    }
+    if (bestVideo) {
+      const title = bestVideo.title || '(sin título)'
+      const truncated = title.length > 40 ? title.slice(0, 40) + '…' : title
+      parts.push(`Top video: "${truncated}" (${formatNumber(bestVideo.views ?? 0)} views)`)
+    }
+    return parts.join(' · ')
+  }, [year, month, stats, prevH])
+
   const videos = stats?.videos ?? []
   const sorted = [...videos].sort((a, b) => {
     const av = a[sortKey] ?? 0, bv = b[sortKey] ?? 0
@@ -207,6 +226,13 @@ export default function TikTokPage() {
             <div className="text-xs font-bold tracking-widest text-gray-400 uppercase">TikTok</div>
             <div className="flex-1 h-px bg-gray-100" />
           </div>
+
+          {/* Month summary */}
+          {summaryText && (
+            <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-xs text-gray-500 mb-5">
+              {summaryText}
+            </div>
+          )}
 
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
             {[

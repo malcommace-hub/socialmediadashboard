@@ -169,6 +169,19 @@ export default function LinkedInPage() {
   const kpiInteractions = curH?.interactions ?? stats?.totalInteractions ?? 0
   const kpiER = curH?.er ?? stats?.avgER ?? 0
 
+  const summaryText = useMemo(() => {
+    const bestPost = [...posts].sort((a, b) => b.impressions - a.impressions)[0]
+    const parts: string[] = [monthLabel(year, month)]
+    if (kpiImpressions > 0) parts.push(`${formatNumber(kpiImpressions)} impresiones`)
+    if (kpiER > 0) parts.push(`ER ${formatPercent(kpiER)}`)
+    if (bestPost) {
+      const title = bestPost.title || '(sin título)'
+      const truncated = title.length > 40 ? title.slice(0, 40) + '…' : title
+      parts.push(`Mejor post: "${truncated}" (${formatNumber(bestPost.impressions)} impr.)`)
+    }
+    return parts.join(' · ')
+  }, [year, month, posts, kpiImpressions, kpiER])
+
   return (
     <div className="p-8 max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-6">
@@ -188,6 +201,13 @@ export default function LinkedInPage() {
         <div className="flex items-center justify-center h-64 text-gray-400">Cargando datos...</div>
       ) : (
         <>
+          {/* Month summary */}
+          {summaryText && (
+            <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-xs text-gray-500 mb-5">
+              {summaryText}
+            </div>
+          )}
+
           {/* KPI cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             {[

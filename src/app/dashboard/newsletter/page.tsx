@@ -115,6 +115,19 @@ export default function NewsletterPage() {
     return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: d.newSubscribers, ma: ma[i] }))
   }, [histLast])
 
+  const summaryText = useMemo(() => {
+    const bestEp = [...episodes].sort((a, b) => (b.views ?? 0) - (a.views ?? 0))[0]
+    const parts: string[] = [monthLabel(year, month)]
+    if (episodes.length > 0) parts.push(`${episodes.length} episodio${episodes.length !== 1 ? 's' : ''}`)
+    if (totalViews > 0) parts.push(`${formatNumber(totalViews)} visualizaciones`)
+    if (bestEp) {
+      const title = bestEp.title || '(sin título)'
+      const truncated = title.length > 40 ? title.slice(0, 40) + '…' : title
+      parts.push(`Mejor episodio: "${truncated}"`)
+    }
+    return parts.join(' · ')
+  }, [year, month, episodes, totalViews])
+
   const chartCardCls = 'bg-white rounded-2xl border border-gray-100 p-4 shadow-sm'
 
   return (
@@ -136,6 +149,13 @@ export default function NewsletterPage() {
         <div className="flex items-center justify-center h-32 text-gray-400">Cargando...</div>
       ) : (
         <>
+          {/* Month summary */}
+          {summaryText && (
+            <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-xs text-gray-500 mb-5">
+              {summaryText}
+            </div>
+          )}
+
           {/* KPI trend cards */}
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
             {[

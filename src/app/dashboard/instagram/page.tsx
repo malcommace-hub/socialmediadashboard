@@ -214,6 +214,27 @@ export default function InstagramPage() {
     return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: +d.er.toFixed(2), ma: ma[i] ? +ma[i]!.toFixed(2) : null }))
   }, [histLast])
 
+  const summaryText = useMemo(() => {
+    const allPosts = stats?.posts ?? []
+    const regPosts = allPosts.filter(p => !(p.is_manual && p.type === 'Collab'))
+    const bestPost = [...regPosts].sort((a, b) => b.views - a.views)[0]
+    const total = stats?.grandTotalViews ?? 0
+    const parts: string[] = [monthLabel(year, month)]
+    if (total > 0) {
+      parts.push(`${formatNumber(total)} views`)
+      if (prevH?.views) {
+        const pct = pctChange(total, prevH.views)
+        if (pct !== null) parts.push(`${pct >= 0 ? '+' : ''}${pct.toFixed(1)}% vs mes ant.`)
+      }
+    }
+    if (bestPost) {
+      const desc = bestPost.description || '(sin título)'
+      const truncated = desc.length > 40 ? desc.slice(0, 40) + '…' : desc
+      parts.push(`Mejor post: "${truncated}" (${formatNumber(bestPost.views)} views)`)
+    }
+    return parts.join(' · ')
+  }, [year, month, stats, prevH])
+
   const chartCardCls = 'bg-white rounded-2xl border border-gray-100 p-4 shadow-sm'
 
   return (
@@ -237,6 +258,13 @@ export default function InstagramPage() {
         <div className="flex items-center justify-center h-64 text-gray-400">Cargando datos...</div>
       ) : (
         <>
+          {/* Month summary */}
+          {summaryText && (
+            <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-xs text-gray-500 mb-5">
+              {summaryText}
+            </div>
+          )}
+
           {/* KPI trend cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             {[
