@@ -418,6 +418,36 @@ export default function InstagramPage() {
     }).filter(w => w.count > 0)
   }, [regularPosts])
 
+  const contentInsight = useMemo(() => {
+    if (typeBreakdown.length < 2) return null
+    const collab = typeBreakdown.find(t => t.type === 'Collab')
+    const reel = typeBreakdown.find(t => t.type === 'Reel')
+    const post = typeBreakdown.find(t => t.type === 'Post')
+    if (collab && reel && collab.count >= 1 && reel.count >= 1 && reel.avgViews > 0 && collab.avgViews / reel.avgViews >= 2) {
+      const ratio = (collab.avgViews / reel.avgViews).toFixed(1)
+      return `Los collabs generan ${ratio}x más alcance que los reels este mes — considerar aumentar la frecuencia`
+    }
+    if (reel && post && reel.count >= 1 && post.count >= 1 && post.avgER > 0 && reel.avgER / post.avgER >= 1.5) {
+      const ratio = (reel.avgER / post.avgER).toFixed(1)
+      return `Los reels tienen ${ratio}x más engagement que los posts — priorizar formato video`
+    }
+    if (post && reel && post.count >= 1 && reel.count >= 1 && reel.avgER > 0 && post.avgER / reel.avgER >= 1.3) {
+      const ratio = (post.avgER / reel.avgER).toFixed(1)
+      return `Los posts generan más engagement por view que los reels (${ratio}x) — el formato estático está funcionando`
+    }
+    if (collab && collab.count >= 1) {
+      const own = typeBreakdown.filter(t => t.type !== 'Collab')
+      if (own.length > 0) {
+        const totalOwn = own.reduce((a, t) => a + t.count, 0)
+        const ownAvgER = totalOwn > 0 ? own.reduce((a, t) => a + t.avgER * t.count, 0) / totalOwn : 0
+        if (ownAvgER > 0 && collab.avgER / ownAvgER >= 1.2) {
+          return `Los collabs superan el ER promedio del contenido propio — los colaboradores amplifican la conversión`
+        }
+      }
+    }
+    return null
+  }, [typeBreakdown])
+
   const freqBadge = useMemo(() => {
     const withDate = regularPosts.filter(p => p.post_date)
     if (!withDate.length) return null
@@ -532,6 +562,13 @@ export default function InstagramPage() {
                   )}
                 </ComposedChart>
               </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Content type insight */}
+          {contentInsight && (
+            <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-2.5 text-sm text-emerald-700 mb-4">
+              💡 {contentInsight}
             </div>
           )}
 
