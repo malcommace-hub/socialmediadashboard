@@ -167,6 +167,39 @@ function SimpleBarChart({
   )
 }
 
+// ─── Sparkline ────────────────────────────────
+
+function Sparkline({ values, color = '#6ee7b7' }: { values: number[]; color?: string }) {
+  if (values.length < 2) {
+    return <svg width="80" height="30" viewBox="0 0 80 30"><line x1="0" y1="15" x2="80" y2="15" stroke="#e5e7eb" strokeWidth="1.5" /></svg>
+  }
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const range = max - min || 1
+  const pts = values.map((v, i) => {
+    const x = (i / (values.length - 1)) * 76 + 2
+    const y = 27 - ((v - min) / range) * 24
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  }).join(' ')
+  return (
+    <svg width="80" height="30" viewBox="0 0 80 30">
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function trendArrow(vals: number[]): { arrow: '↑' | '↓' | '→'; cls: string } {
+  if (vals.length < 4) return { arrow: '→', cls: 'text-gray-400' }
+  const mid = Math.floor(vals.length / 2)
+  const priorAvg = vals.slice(0, mid).reduce((a, b) => a + b, 0) / mid
+  const recentAvg = vals.slice(mid).reduce((a, b) => a + b, 0) / (vals.length - mid)
+  if (priorAvg <= 0) return { arrow: '→', cls: 'text-gray-400' }
+  const pct = ((recentAvg - priorAvg) / priorAvg) * 100
+  if (pct > 5) return { arrow: '↑', cls: 'text-emerald-600' }
+  if (pct < -5) return { arrow: '↓', cls: 'text-red-500' }
+  return { arrow: '→', cls: 'text-gray-400' }
+}
+
 // ─── Publication heatmap ───────────────────────
 
 type HeatmapPost = { date: string; title: string | null }
@@ -510,6 +543,15 @@ export default function OverviewPage() {
     const liQTop = liTop.filter(p => qMonths.includes(p.month)).slice(0, 3)
     return { curQ, qYear, qMonths, qData, scores, avgScore, igQTop, liQTop }
   }, [current, history, igTop, liTop])
+
+  const allScores = useMemo(() => (
+    history.map((h, idx) => ({
+      ...h,
+      score: calculateMonthScore(h, history.slice(0, idx + 1)).score,
+    }))
+  ), [history])
+
+  const spark6 = useMemo(() => allScores.slice(-6), [allScores])
 
   useEffect(() => {
     if (!showQModal || !qClose) return
@@ -860,6 +902,36 @@ export default function OverviewPage() {
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Tendencias 6 meses */}
+          {spark6.length >= 2 && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm mb-6 p-4">
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-3">Tendencias 6 meses</div>
+              <div className="grid grid-cols-3 lg:grid-cols-6 gap-4">
+                {([
+                  { label: 'Impresiones', vals: spark6.map(h => h.igImpressions + h.liImpressions + h.ttViews), color: '#10b981', fmt: (v: number) => formatNumber(Math.round(v)) },
+                  { label: 'IG ER%', vals: spark6.map(h => h.igER), color: '#ec4899', fmt: (v: number) => v.toFixed(2) + '%' },
+                  { label: 'LI ER%', vals: spark6.map(h => h.liER), color: '#0ea5e9', fmt: (v: number) => v.toFixed(2) + '%' },
+                  { label: 'Seguidores', vals: spark6.map(h => h.igNewFollowers + h.liNewFollowers + h.ttNewFollowers), color: '#a78bfa', fmt: (v: number) => '+' + formatNumber(Math.round(v)) },
+                  { label: 'Newsletter', vals: spark6.map(h => h.newsletterViews), color: '#f97316', fmt: (v: number) => formatNumber(Math.round(v)) },
+                  { label: 'Score', vals: spark6.map(h => h.score), color: '#6366f1', fmt: (v: number) => String(Math.round(v)) },
+                ] as { label: string; vals: number[]; color: string; fmt: (v: number) => string }[]).map(({ label, vals, color, fmt }) => {
+                  const { arrow, cls } = trendArrow(vals)
+                  const lastVal = vals[vals.length - 1]
+                  return (
+                    <div key={label} className="flex flex-col items-center gap-0.5">
+                      <div className="text-[10px] font-medium text-gray-400 uppercase tracking-wide text-center">{label}</div>
+                      <Sparkline values={vals} color={color} />
+                      <div className="flex items-center gap-0.5">
+                        <span className="text-xs font-semibold text-gray-700">{fmt(lastVal)}</span>
+                        <span className={`text-xs font-bold ${cls}`}>{arrow}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
 
