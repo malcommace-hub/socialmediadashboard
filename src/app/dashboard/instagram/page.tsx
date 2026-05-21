@@ -661,6 +661,7 @@ export default function InstagramPage() {
                     </th>
                     <th className="text-left py-2 px-2 text-xs font-medium text-gray-400">Tipo</th>
                     <th className="text-left py-2 px-2 text-xs font-medium text-gray-400">Descripción</th>
+                    <th className="hidden md:table-cell text-left py-2 px-2 text-xs font-medium text-gray-400">Cuenta</th>
                     <th className="text-left py-2 px-2 text-xs font-medium text-gray-400">Fecha</th>
                     <th className="text-right py-2 px-2 text-xs font-medium text-gray-400 cursor-pointer select-none hover:text-gray-600"
                       onClick={() => toggleSort('views')}>
@@ -680,7 +681,7 @@ export default function InstagramPage() {
                 </thead>
                 <tbody>
                   {sorted.length === 0 && (
-                    <tr><td colSpan={9} className="py-8 text-center text-gray-400 text-sm">
+                    <tr><td colSpan={10} className="py-8 text-center text-gray-400 text-sm">
                       No hay posts. Subí un CSV o agregá uno manual.
                     </td></tr>
                   )}
@@ -703,8 +704,11 @@ export default function InstagramPage() {
                           <span className="text-gray-700 truncate">{post.description || '—'}</span>
                         </div>
                         {post.collab_account && (
-                          <div className="text-xs text-orange-600 font-medium">{post.collab_account}</div>
+                          <div className="text-xs text-orange-600 font-medium md:hidden">{post.collab_account}</div>
                         )}
+                      </td>
+                      <td className="hidden md:table-cell py-2 px-2 text-xs text-gray-500">
+                        {post.collab_account || ''}
                       </td>
                       <td className="py-2 px-2 text-gray-500 whitespace-nowrap">{post.post_date ?? '—'}</td>
                       <td className="py-2 px-2 text-right font-medium text-gray-800">{formatNumber(post.views)}</td>
