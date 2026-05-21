@@ -6,7 +6,7 @@ import { getNewsletterData, upsertNewsletterMonthly, addNewsletterEpisode, delet
 import { formatNumber, monthLabel, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
 import { useMesParam } from '@/hooks/useMesParam'
 import type { NewsletterEpisode } from '@/lib/types'
-import { Trash2, Plus, RefreshCw } from 'lucide-react'
+import { Trash2, Plus, RefreshCw, ExternalLink } from 'lucide-react'
 import { SkeletonCard } from '@/components/dashboard/SkeletonCard'
 import { clearCache } from '@/lib/queryCache'
 import {
@@ -28,6 +28,30 @@ function TrendBadge({ value, prev }: { value: number; prev: number | undefined }
   )
 }
 
+// Recharts injects cx/cy/value/payload via cloneElement when used as <Line dot={<NLFollowerDot/>}/>
+function NLFollowerDot(props: {
+  cx?: number; cy?: number; value?: number
+  payload?: { pctChange?: number | null }
+  [k: string]: unknown
+}) {
+  const { cx, cy, value, payload } = props
+  if (!value || !cx || !cy) return <g />
+  const pct = payload?.pctChange ?? null
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={3.5} fill="#f97316" />
+      <text x={cx} y={cy - 8} textAnchor="middle" fontSize={10} fontWeight="bold" fill="#374151">
+        {formatNumber(value)}
+      </text>
+      {pct !== null && (
+        <text x={cx} y={cy - 19} textAnchor="middle" fontSize={9} fill={pct >= 0 ? '#10b981' : '#ef4444'}>
+          {pct >= 0 ? '+' : ''}{pct.toFixed(1)}%
+        </text>
+      )}
+    </g>
+  )
+}
+
 export default function NewsletterPage() {
   const { year, month, setYear, setMonth } = useMesParam()
   const [episodes, setEpisodes] = useState<NewsletterEpisode[]>([])
@@ -38,7 +62,7 @@ export default function NewsletterPage() {
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [showForm, setShowForm] = useState(false)
-  const [newEp, setNewEp] = useState({ episode_number: '', title: '', views: '', lead_magnet_downloads: '', published_date: '' })
+  const [newEp, setNewEp] = useState({ episode_number: '', title: '', views: '', lead_magnet_downloads: '', published_date: '', url: '' })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -78,8 +102,9 @@ export default function NewsletterPage() {
       views: parseInt(newEp.views) || 0,
       lead_magnet_downloads: parseInt(newEp.lead_magnet_downloads) || 0,
       published_date: newEp.published_date || null,
+      url: newEp.url || null,
     })
-    setNewEp({ episode_number: '', title: '', views: '', lead_magnet_downloads: '', published_date: '' })
+    setNewEp({ episode_number: '', title: '', views: '', lead_magnet_downloads: '', published_date: '', url: '' })
     setShowForm(false)
     await load()
     setSaving(false)
@@ -119,10 +144,13 @@ export default function NewsletterPage() {
   const cumulativeSubsChart = useMemo(() => {
     const sorted = [...history].sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month)
     let running = 0
-    return sorted.map(d => {
+    const pts = sorted.map(d => {
+      const prev = running
       running += d.newSubscribers ?? 0
-      return { label: shortMonthLabel(d.year, d.month), total: running }
-    }).slice(-12)
+      const pctChange = prev > 0 ? ((running - prev) / prev) * 100 : null
+      return { label: shortMonthLabel(d.year, d.month), total: running, pctChange }
+    })
+    return pts.slice(-12)
   }, [history])
 
   const topEpId = useMemo(() => {
@@ -265,7 +293,7 @@ export default function NewsletterPage() {
                       <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
                       <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} />
                       <Tooltip formatter={(v) => [formatNumber(Number(v)), 'Total suscriptores']} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                      <Area type="monotone" dataKey="total" stroke="#f97316" strokeWidth={2} fill="url(#nlSubsGrad)" dot={false} />
+                      <Area type="monotone" dataKey="total" stroke="#f97316" strokeWidth={2} fill="url(#nlSubsGrad)" dot={<NLFollowerDot /> as unknown as boolean} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -327,6 +355,11 @@ export default function NewsletterPage() {
                     <input type="date" value={newEp.published_date} onChange={e => setNewEp(v => ({ ...v, published_date: e.target.value }))}
                       className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                   </div>
+                  <div className="col-span-3">
+                    <label className="text-xs text-gray-500 block mb-1">URL del artículo</label>
+                    <input type="url" value={newEp.url} onChange={e => setNewEp(v => ({ ...v, url: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  </div>
                 </div>
                 <div className="flex gap-2 mt-3">
                   <button onClick={saveEpisode} disabled={saving}
@@ -346,12 +379,13 @@ export default function NewsletterPage() {
                   <th className="text-left py-2 px-2 text-xs font-medium text-gray-400">Fecha</th>
                   <th className="text-right py-2 px-2 text-xs font-medium text-gray-400">Views</th>
                   <th className="text-right py-2 px-2 text-xs font-medium text-gray-400">Lead magnets</th>
+                  <th className="text-center py-2 px-2 text-xs font-medium text-gray-400">Enlace</th>
                   <th className="py-2 px-2 w-8" />
                 </tr>
               </thead>
               <tbody>
                 {episodes.length === 0 && (
-                  <tr><td colSpan={6} className="py-8 text-center text-gray-400 text-sm">
+                  <tr><td colSpan={7} className="py-8 text-center text-gray-400 text-sm">
                     No hay episodios cargados para este mes.
                   </td></tr>
                 )}
@@ -365,6 +399,13 @@ export default function NewsletterPage() {
                     <td className="py-2 px-2 text-gray-500">{ep.published_date ?? '—'}</td>
                     <td className="py-2 px-2 text-right font-medium">{formatNumber(ep.views)}</td>
                     <td className="py-2 px-2 text-right text-gray-600">{formatNumber(ep.lead_magnet_downloads)}</td>
+                    <td className="py-2 px-2 text-center">
+                      {ep.url && (
+                        <a href={ep.url} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-emerald-500 transition-colors inline-flex">
+                          <ExternalLink size={13} />
+                        </a>
+                      )}
+                    </td>
                     <td className="py-2 px-2 text-right">
                       <button onClick={() => handleDelete(ep.id)} className="text-gray-200 hover:text-red-500 group-hover:text-gray-400 transition-colors">
                         <Trash2 size={14} />

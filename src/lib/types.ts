@@ -130,6 +130,7 @@ export interface NewsletterEpisode {
   views: number
   lead_magnet_downloads: number
   published_date: string | null
+  url: string | null
 }
 
 // ─── Web ─────────────────────────────────────
