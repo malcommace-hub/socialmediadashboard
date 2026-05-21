@@ -6,7 +6,7 @@ import { getNewsletterData, upsertNewsletterMonthly, addNewsletterEpisode, delet
 import { formatNumber, monthLabel, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
 import { useMesParam } from '@/hooks/useMesParam'
 import type { NewsletterEpisode } from '@/lib/types'
-import { Trash2, Plus } from 'lucide-react'
+import { Trash2, Plus, RefreshCw } from 'lucide-react'
 import { SkeletonCard } from '@/components/dashboard/SkeletonCard'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -151,7 +151,16 @@ export default function NewsletterPage() {
           <h1 className="text-2xl font-bold text-gray-900">Newsletter</h1>
           <p className="text-gray-500 text-sm mt-0.5">{monthLabel(year, month)} · Seeds Business Radar</p>
         </div>
-        <MonthSelector year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m) }} />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={load}
+            className="presentation-hide p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            title="Actualizar datos"
+          >
+            <RefreshCw size={15} />
+          </button>
+          <MonthSelector year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m) }} />
+        </div>
       </div>
 
       {error && (

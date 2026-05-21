@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useRef, useState, useMemo } from 'react'
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { Card } from '@/components/ui/card'
 import { getOverviewHistory, getInstagramTopPosts, getLinkedInTopPosts, getMonthlyNote, upsertMonthlyNote } from '@/lib/queries'
 import { formatNumber, formatPercent, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
@@ -7,7 +7,7 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, LabelList,
 } from 'recharts'
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ExternalLink, RefreshCw } from 'lucide-react'
 import { SkeletonCard } from '@/components/dashboard/SkeletonCard'
 import { MonthScoreCard } from '@/components/dashboard/MonthScoreCard'
 
@@ -184,16 +184,19 @@ export default function OverviewPage() {
   const [note, setNote] = useState('')
   const [saveStatus, setSaveStatus] = useState<'' | 'saving' | 'saved'>('')
   const [copied, setCopied] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  useEffect(() => {
+  const loadHistory = useCallback(() => {
     setLoading(true)
     getOverviewHistory().then(data => {
       setHistory(data)
       setLoading(false)
     })
   }, [])
+
+  useEffect(() => { loadHistory() }, [loadHistory, reloadKey])
 
   const visible = useMemo(() => {
     if (!history.length) return []
@@ -301,6 +304,58 @@ export default function OverviewPage() {
     return { curQ, year: current.year, prevQNum, curImpQ, prevImpQ, curFollQ, prevFollQ, curERQ, prevERQ }
   }, [current, history])
 
+  type AlertLevel = 'positive' | 'warning' | 'critical' | 'nodata'
+  const anomalyAlerts = useMemo(() => {
+    if (!current) return null
+    const idx = history.findIndex(h => h.year === current.year && h.month === current.month)
+    if (idx < 2) return null // need at least 2 prior months
+    const prior = history.slice(Math.max(0, idx - 3), idx)
+    if (prior.length < 2) return null
+
+    function priorAvg(vals: number[]): number {
+      const nonZero = vals.filter(v => v > 0)
+      return nonZero.length ? nonZero.reduce((a, b) => a + b, 0) / nonZero.length : 0
+    }
+
+    const alerts: { label: string; level: AlertLevel; pct: number | null; magnitude: number }[] = []
+
+    function check(label: string, curr: number, priorVals: number[], positiveOnly = false) {
+      const avg = priorAvg(priorVals)
+      if (curr === 0 && avg > 0) {
+        if (!positiveOnly) alerts.push({ label, level: 'nodata', pct: null, magnitude: 100 })
+        return
+      }
+      if (avg === 0) return
+      const pct = ((curr - avg) / avg) * 100
+      if (pct > 30) {
+        alerts.push({ label, level: 'positive', pct, magnitude: pct })
+      } else if (!positiveOnly && pct < -50) {
+        alerts.push({ label, level: 'critical', pct, magnitude: Math.abs(pct) })
+      } else if (!positiveOnly && pct < -20) {
+        alerts.push({ label, level: 'warning', pct, magnitude: Math.abs(pct) })
+      }
+    }
+
+    check('Instagram views', current.igImpressions, prior.map(h => h.igImpressions))
+    check('LinkedIn impresiones', current.liImpressions, prior.map(h => h.liImpressions))
+    check('TikTok views', current.ttViews, prior.map(h => h.ttViews))
+    check(
+      'Nuevos seguidores',
+      current.igNewFollowers + current.liNewFollowers + current.ttNewFollowers,
+      prior.map(h => h.igNewFollowers + h.liNewFollowers + h.ttNewFollowers)
+    )
+    const currER = (() => {
+      const vals = [current.igER, current.liER].filter(v => v > 0)
+      return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0
+    })()
+    check('ER promedio', currER, prior.map(h => {
+      const vals = [h.igER, h.liER].filter(v => v > 0)
+      return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0
+    }), true)
+
+    return alerts.sort((a, b) => b.magnitude - a.magnitude).slice(0, 4)
+  }, [current, history])
+
   function handleCopy() {
     if (!current) return
     const impPct = pctChange(curImp, prevImp)
@@ -356,16 +411,25 @@ export default function OverviewPage() {
         <h1 className="text-2xl font-bold text-gray-900">
           Overview general{current ? ` — ${shortMonthLabel(current.year, current.month)}` : ''}
         </h1>
-        {current && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={handleCopy}
-            className={`presentation-hide text-sm px-4 py-1.5 rounded-lg font-medium transition-colors ${
-              copied ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
+            onClick={() => setReloadKey(k => k + 1)}
+            className="presentation-hide p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            title="Actualizar datos"
           >
-            {copied ? '✓ Copiado' : 'Copiar resumen'}
+            <RefreshCw size={15} />
           </button>
-        )}
+          {current && (
+            <button
+              onClick={handleCopy}
+              className={`presentation-hide text-sm px-4 py-1.5 rounded-lg font-medium transition-colors ${
+                copied ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {copied ? '✓ Copiado' : 'Copiar resumen'}
+            </button>
+          )}
+        </div>
       </div>
 
       {loading ? (
@@ -481,6 +545,39 @@ export default function OverviewPage() {
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Anomaly alerts */}
+          {anomalyAlerts !== null && (
+            <div className="mb-6">
+              {anomalyAlerts.length === 0 ? (
+                <div className="bg-emerald-50 border border-emerald-100 rounded-2xl px-4 py-3 text-sm text-emerald-700">
+                  ✅ Todas las métricas dentro del rango esperado
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                  {anomalyAlerts.map((alert, i) => {
+                    const levelCfg = {
+                      positive: { bg: 'bg-emerald-50 border-emerald-100', text: 'text-emerald-700', icon: '📈' },
+                      warning:  { bg: 'bg-amber-50 border-amber-100',     text: 'text-amber-700',   icon: '⚠️' },
+                      critical: { bg: 'bg-red-50 border-red-100',         text: 'text-red-700',     icon: '🔴' },
+                      nodata:   { bg: 'bg-gray-50 border-gray-200',       text: 'text-gray-500',    icon: '⚪' },
+                    }
+                    const cfg = levelCfg[alert.level]
+                    const suffix =
+                      alert.level === 'nodata'    ? ' sin datos este mes' :
+                      alert.level === 'positive'  ? ` +${alert.pct!.toFixed(0)}% vs promedio — mes excepcional` :
+                      alert.level === 'critical'  ? ` ${alert.pct!.toFixed(0)}% — caída significativa` :
+                                                    ` ${alert.pct!.toFixed(0)}% vs promedio de los últimos 3 meses`
+                    return (
+                      <div key={i} className={`border rounded-xl px-4 py-2.5 text-sm ${cfg.bg} ${cfg.text}`}>
+                        {cfg.icon} {alert.label}{suffix}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )}
 

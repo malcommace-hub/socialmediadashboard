@@ -7,7 +7,7 @@ import { getLinkedInStats, getLinkedInHistory, deleteLinkedInPost, upsertLinkedI
 import { formatNumber, formatPercent, monthLabel, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
 import { useMesParam } from '@/hooks/useMesParam'
 import type { LinkedInStats } from '@/lib/types'
-import { Trash2, ExternalLink, ChevronUp, ChevronDown, Upload, Plus, PencilLine } from 'lucide-react'
+import { Trash2, ExternalLink, ChevronUp, ChevronDown, Upload, Plus, PencilLine, RefreshCw } from 'lucide-react'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LabelList, AreaChart, Area,
@@ -284,7 +284,16 @@ export default function LinkedInPage() {
           <h1 className="text-2xl font-bold text-gray-900">LinkedIn — Seeds</h1>
           <p className="text-gray-500 text-sm mt-0.5">{monthLabel(year, month)} · weareseeders</p>
         </div>
-        <MonthSelector year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m) }} />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={load}
+            className="presentation-hide p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            title="Actualizar datos"
+          >
+            <RefreshCw size={15} />
+          </button>
+          <MonthSelector year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m) }} />
+        </div>
       </div>
 
       {error && (

@@ -10,7 +10,7 @@ import {
 import { formatNumber, formatPercent, monthLabel, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
 import { useMesParam } from '@/hooks/useMesParam'
 import type { InstagramStats, InstagramPost } from '@/lib/types'
-import { Trash2, ExternalLink, Plus, ChevronUp, ChevronDown, PencilLine, Upload } from 'lucide-react'
+import { Trash2, ExternalLink, Plus, ChevronUp, ChevronDown, PencilLine, Upload, RefreshCw } from 'lucide-react'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LabelList, AreaChart, Area,
@@ -427,7 +427,16 @@ export default function InstagramPage() {
             <p className="text-gray-500 text-sm mt-0.5">{monthLabel(year, month)} · {formatNumber(stats?.monthly?.total_followers ?? 0)} followers</p>
           </div>
         </div>
-        <MonthSelector year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m) }} />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={load}
+            className="presentation-hide p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            title="Actualizar datos"
+          >
+            <RefreshCw size={15} />
+          </button>
+          <MonthSelector year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m) }} />
+        </div>
       </div>
 
       {error && (
