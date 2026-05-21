@@ -180,12 +180,6 @@ export default function OverviewPage() {
   const [topOpen, setTopOpen] = useState(false)
 
   useEffect(() => {
-    Promise.all([getInstagramTopPosts(), getLinkedInTopPosts()])
-      .then(([ig, li]) => { setIgTop(ig); setLiTop(li) })
-      .catch(() => {})
-  }, [])
-
-  useEffect(() => {
     setLoading(true)
     getOverviewHistory().then(data => {
       setHistory(data)
@@ -202,6 +196,16 @@ export default function OverviewPage() {
 
   const current = visible[visible.length - 1]
   const prev = visible[visible.length - 2]
+
+  const selectedYear = current?.year
+  const selectedMonth = current?.month
+
+  useEffect(() => {
+    if (!selectedYear) return
+    Promise.all([getInstagramTopPosts(selectedYear), getLinkedInTopPosts(selectedYear)])
+      .then(([ig, li]) => { setIgTop(ig); setLiTop(li) })
+      .catch(() => {})
+  }, [selectedYear])
 
   const impData = useMemo(() => {
     const totals = visible.map(d => d.igImpressions + d.liImpressions + d.ttViews + d.ytViews)
@@ -284,22 +288,22 @@ export default function OverviewPage() {
           {/* Score del mes */}
           {current && <MonthScoreCard current={current} history={history} />}
 
-          {/* Top 10 posts all-time (collapsible) */}
+          {/* Top 12 posts del año (collapsible) */}
           {(igTop.length > 0 || liTop.length > 0) && (
             <Card className="mb-6">
               <div
                 className="flex items-center justify-between cursor-pointer select-none"
                 onClick={() => setTopOpen(o => !o)}
               >
-                <span className="text-sm font-semibold text-gray-700">Top posts all-time</span>
+                <span className="text-sm font-semibold text-gray-700">Top 12 del año {selectedYear ?? '—'}</span>
                 <span className="text-gray-400">{topOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</span>
               </div>
               {topOpen && (
                 <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Instagram top 10 */}
+                  {/* Instagram top 12 */}
                   {igTop.length > 0 && (
                     <div>
-                      <div className="text-xs font-semibold tracking-wider text-gray-400 uppercase mb-2">Top 10 Instagram all-time</div>
+                      <div className="text-xs font-semibold tracking-wider text-gray-400 uppercase mb-2">Top Instagram {selectedYear}</div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead>
@@ -312,28 +316,34 @@ export default function OverviewPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {igTop.map((p, i) => (
-                              <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
-                                <td className="py-1.5 px-2 text-xs text-gray-500 whitespace-nowrap">{shortMonthLabel(p.year, p.month)}</td>
-                                <td className="py-1.5 px-2 text-gray-700 max-w-[160px] truncate text-xs">{p.description || '—'}</td>
-                                <td className="py-1.5 px-2 text-right font-medium text-xs">{formatNumber(p.views)}</td>
-                                <td className="py-1.5 px-2 text-right text-xs text-gray-600">{p.er.toFixed(2)}%</td>
-                                <td className="py-1.5 px-2 text-right">
-                                  {p.permalink && !p.permalink.startsWith('manual:')
-                                    ? <a href={p.permalink} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 inline-flex"><ExternalLink size={12} /></a>
-                                    : null}
-                                </td>
-                              </tr>
-                            ))}
+                            {igTop.map((p, i) => {
+                              const isCurrent = p.year === selectedYear && p.month === selectedMonth
+                              return (
+                                <tr key={i} className={`border-b border-gray-50 ${isCurrent ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
+                                  <td className="py-1.5 px-2 text-xs text-gray-500 whitespace-nowrap">
+                                    {isCurrent && <span className="text-xs font-semibold text-blue-500 mr-1">Este mes</span>}
+                                    {shortMonthLabel(p.year, p.month)}
+                                  </td>
+                                  <td className="py-1.5 px-2 text-gray-700 max-w-[160px] truncate text-xs">{p.description || '—'}</td>
+                                  <td className="py-1.5 px-2 text-right font-medium text-xs">{formatNumber(p.views)}</td>
+                                  <td className="py-1.5 px-2 text-right text-xs text-gray-600">{p.er.toFixed(2)}%</td>
+                                  <td className="py-1.5 px-2 text-right">
+                                    {p.permalink && !p.permalink.startsWith('manual:')
+                                      ? <a href={p.permalink} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 inline-flex"><ExternalLink size={12} /></a>
+                                      : null}
+                                  </td>
+                                </tr>
+                              )
+                            })}
                           </tbody>
                         </table>
                       </div>
                     </div>
                   )}
-                  {/* LinkedIn top 10 */}
+                  {/* LinkedIn top 12 */}
                   {liTop.length > 0 && (
                     <div>
-                      <div className="text-xs font-semibold tracking-wider text-gray-400 uppercase mb-2">Top 10 LinkedIn all-time</div>
+                      <div className="text-xs font-semibold tracking-wider text-gray-400 uppercase mb-2">Top LinkedIn {selectedYear}</div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead>
@@ -346,19 +356,25 @@ export default function OverviewPage() {
                             </tr>
                           </thead>
                           <tbody>
-                            {liTop.map((p, i) => (
-                              <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
-                                <td className="py-1.5 px-2 text-xs text-gray-500 whitespace-nowrap">{shortMonthLabel(p.year, p.month)}</td>
-                                <td className="py-1.5 px-2 text-gray-700 max-w-[160px] truncate text-xs">{p.title || '—'}</td>
-                                <td className="py-1.5 px-2 text-right font-medium text-xs">{formatNumber(p.impressions)}</td>
-                                <td className="py-1.5 px-2 text-right text-xs text-gray-600">{p.er.toFixed(2)}%</td>
-                                <td className="py-1.5 px-2 text-right">
-                                  {p.permalink
-                                    ? <a href={p.permalink} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 inline-flex"><ExternalLink size={12} /></a>
-                                    : null}
-                                </td>
-                              </tr>
-                            ))}
+                            {liTop.map((p, i) => {
+                              const isCurrent = p.year === selectedYear && p.month === selectedMonth
+                              return (
+                                <tr key={i} className={`border-b border-gray-50 ${isCurrent ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
+                                  <td className="py-1.5 px-2 text-xs text-gray-500 whitespace-nowrap">
+                                    {isCurrent && <span className="text-xs font-semibold text-blue-500 mr-1">Este mes</span>}
+                                    {shortMonthLabel(p.year, p.month)}
+                                  </td>
+                                  <td className="py-1.5 px-2 text-gray-700 max-w-[160px] truncate text-xs">{p.title || '—'}</td>
+                                  <td className="py-1.5 px-2 text-right font-medium text-xs">{formatNumber(p.impressions)}</td>
+                                  <td className="py-1.5 px-2 text-right text-xs text-gray-600">{p.er.toFixed(2)}%</td>
+                                  <td className="py-1.5 px-2 text-right">
+                                    {p.permalink
+                                      ? <a href={p.permalink} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 inline-flex"><ExternalLink size={12} /></a>
+                                      : null}
+                                  </td>
+                                </tr>
+                              )
+                            })}
                           </tbody>
                         </table>
                       </div>

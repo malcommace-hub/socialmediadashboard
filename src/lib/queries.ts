@@ -502,10 +502,11 @@ export async function getAvailableMonths() {
   return unique
 }
 
-export async function getInstagramTopPosts(limit = 10) {
+export async function getInstagramTopPosts(year: number, limit = 12) {
   const { data } = await supabase
     .from('instagram_posts')
     .select('year,month,description,type,views,impressions,likes,comments,shares,saves,permalink,collab_account')
+    .eq('year', year)
     .order('views', { ascending: false })
     .limit(limit)
   return (data ?? []).map(p => ({
@@ -516,10 +517,11 @@ export async function getInstagramTopPosts(limit = 10) {
   }))
 }
 
-export async function getLinkedInTopPosts(limit = 10) {
+export async function getLinkedInTopPosts(year: number, limit = 12) {
   const { data } = await supabase
     .from('linkedin_posts')
     .select('year,month,title,impressions,er_decimal,permalink')
+    .eq('year', year)
     .order('impressions', { ascending: false })
     .limit(limit)
   return (data ?? []).map(p => ({ ...p, er: (p.er_decimal ?? 0) * 100 }))
