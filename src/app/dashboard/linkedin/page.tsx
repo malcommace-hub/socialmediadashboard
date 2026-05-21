@@ -443,10 +443,15 @@ export default function LinkedInPage() {
                         <input type="checkbox" className="rounded" checked={selected.has(post.id)} onChange={() => toggleSelect(post.id)} />
                       </td>
                       <td className="py-2 px-2 max-w-xs">
-                        {post.permalink
-                          ? <a href={post.permalink} target="_blank" rel="noopener noreferrer" className="text-gray-700 hover:text-blue-600 truncate block">{post.title || '(sin título)'}</a>
-                          : <div className="text-gray-700 truncate">{post.title || '(sin título)'}</div>
-                        }
+                        <div className="flex items-center gap-1">
+                          {idx === 0 && sorted.length > 3 && (
+                            <span className="text-xs font-semibold text-amber-500 whitespace-nowrap">⭐ Top</span>
+                          )}
+                          {post.permalink
+                            ? <a href={post.permalink} target="_blank" rel="noopener noreferrer" className="text-gray-700 hover:text-blue-600 truncate">{post.title || '(sin título)'}</a>
+                            : <span className="text-gray-700 truncate">{post.title || '(sin título)'}</span>
+                          }
+                        </div>
                         {post.is_manual && <Badge variant="manual">Manual</Badge>}
                       </td>
                       <td className="py-2 px-2 text-gray-500 whitespace-nowrap">{post.post_date ?? '—'}</td>

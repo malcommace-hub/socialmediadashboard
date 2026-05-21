@@ -684,7 +684,7 @@ export default function InstagramPage() {
                       No hay posts. Subí un CSV o agregá uno manual.
                     </td></tr>
                   )}
-                  {sorted.map(post => (
+                  {sorted.map((post, idx) => (
                     <tr key={post.id} className="border-b border-gray-50 hover:bg-gray-50 group">
                       <td className="py-2 px-2">
                         <input type="checkbox" className="rounded" checked={selected.has(post.id)} onChange={() => toggleSelect(post.id)} />
@@ -696,7 +696,12 @@ export default function InstagramPage() {
                         {post.is_manual && <Badge variant="manual" className="ml-1">Manual</Badge>}
                       </td>
                       <td className="py-2 px-2 max-w-xs">
-                        <div className="text-gray-700 truncate">{post.description || '—'}</div>
+                        <div className="flex items-center gap-1">
+                          {idx === 0 && sorted.length > 3 && (
+                            <span className="text-xs font-semibold text-amber-500 whitespace-nowrap">⭐ Top</span>
+                          )}
+                          <span className="text-gray-700 truncate">{post.description || '—'}</span>
+                        </div>
                         {post.collab_account && (
                           <div className="text-xs text-orange-600 font-medium">{post.collab_account}</div>
                         )}
