@@ -318,9 +318,11 @@ const MONTH_MAP: Record<string, number> = {
   october: 10, oct: 10, november: 11, nov: 11, december: 12, dec: 12,
 }
 
-// Converts "May 17" or "December 14" to "YYYY-MM-DD" using the given year.
-// Returns null if it can't be parsed — prevents DB date type errors.
-function parseTikTokDate(raw: string, exportYear: number): string | null {
+// Converts "May 17" or "December 14" to "YYYY-MM-DD".
+// exportMonth (1–12) is the month the CSV was exported. If the parsed month
+// is greater than exportMonth the video is from the previous year — a common
+// edge case when exporting in Jan/Feb after a December recording session.
+function parseTikTokDate(raw: string, exportYear: number, exportMonth: number): string | null {
   if (!raw) return null
   // Already ISO format
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
@@ -330,14 +332,16 @@ function parseTikTokDate(raw: string, exportYear: number): string | null {
     const mo = MONTH_MAP[m[1].toLowerCase()]
     const day = parseInt(m[2], 10)
     if (mo && day >= 1 && day <= 31) {
-      return `${exportYear}-${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+      const parsedYear = mo > exportMonth ? exportYear - 1 : exportYear
+      return `${parsedYear}-${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}`
     }
   }
   return null
 }
 
-export function parseTikTokCSV(text: string, year?: number): RawTikTokRow[] {
+export function parseTikTokCSV(text: string, year?: number, month?: number): RawTikTokRow[] {
   const exportYear = year ?? new Date().getFullYear()
+  const exportMonth = month ?? (new Date().getMonth() + 1)
 
   const result = Papa.parse<Record<string, string>>(text, {
     header: true,
@@ -355,7 +359,7 @@ export function parseTikTokCSV(text: string, year?: number): RawTikTokRow[] {
   return result.data.map(row => ({
     title: row['video_title'] || row['title'] || '',
     permalink: row['video_link'] || row['link'] || row['url'] || null,
-    video_date: parseTikTokDate(row['post_time'] || row['date'] || row['publish_date'] || '', exportYear),
+    video_date: parseTikTokDate(row['post_time'] || row['date'] || row['publish_date'] || '', exportYear, exportMonth),
     // TikTok Studio exports use "Total views" / "Total likes" etc.
     views:    parseFloat(row['total_views']    || row['views']    || row['video_views'] || '0') || 0,
     likes:    parseFloat(row['total_likes']    || row['likes']    || '0') || 0,

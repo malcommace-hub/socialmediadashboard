@@ -157,7 +157,7 @@ export default function UploadPage() {
     setTt({ ...emptyState, status: 'parsing' })
     try {
       const text = await file.text()
-      const rows = parseTikTokCSV(text, year)
+      const rows = parseTikTokCSV(text, year, month)
       const detected = detectMonthFromRows(rows)
       if (detected) { setYear(detected.year); setMonth(detected.month) }
       setTt({ status: 'preview', rowCount: rows.length, preview: rows, detectedMonth: detected })
