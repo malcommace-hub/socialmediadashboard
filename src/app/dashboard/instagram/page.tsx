@@ -350,6 +350,16 @@ export default function InstagramPage() {
     return parts.join(' · ')
   }, [year, month, stats, prevH])
 
+  const bestErPostId = useMemo(() => {
+    if (regularPosts.length <= 5) return null
+    const eligible = regularPosts.filter(p => (p.views ?? 0) >= 100)
+    if (!eligible.length) return null
+    const bestEr = eligible.reduce((a, b) => erForPost(a) > erForPost(b) ? a : b)
+    const topViews = [...regularPosts].sort((a, b) => (b.views ?? 0) - (a.views ?? 0))[0]
+    if (!topViews || bestEr.id === topViews.id) return null
+    return bestEr.id
+  }, [regularPosts])
+
   // Computed client-side from already-loaded posts — avoids a redundant extra query
   const typeBreakdown = useMemo(() => {
     const posts = (stats?.posts ?? []).filter(p => !(p.is_manual && p.type === 'Collab'))
@@ -976,6 +986,9 @@ export default function InstagramPage() {
                         <div className="flex items-center gap-1">
                           {idx === 0 && sorted.length > 3 && (
                             <span className="text-xs font-semibold text-amber-500 whitespace-nowrap">⭐ Top</span>
+                          )}
+                          {post.id === bestErPostId && (
+                            <span className="text-xs font-semibold text-violet-500 whitespace-nowrap">💎 Mejor ER</span>
                           )}
                           <span className="text-gray-700 truncate">{post.description || '—'}</span>
                         </div>
