@@ -32,16 +32,23 @@ function TrendBadge({ value, prev }: { value: number; prev: number | undefined }
 }
 
 const IG_SCATTER_COLORS: Record<string, string> = {
-  Reel: '#ec4899', Post: '#3b82f6', Collab: '#8b5cf6', Story: '#94a3b8',
+  Reel: '#ec4899', Post: '#3b82f6', Collab: '#8b5cf6',
 }
 
-function ScatterTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: { desc: string; x: number; y: number } }> }) {
+function logTickFmt(v: number): string {
+  const n = Math.pow(10, v)
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(0)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}k`
+  return String(Math.round(n))
+}
+
+function ScatterTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: { desc: string; rawX: number; y: number } }> }) {
   if (!active || !payload?.length) return null
   const pt = payload[0].payload
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-2 text-xs shadow-lg">
       <div className="font-medium text-gray-800 max-w-[160px] truncate">{pt.desc}</div>
-      <div className="text-gray-500 mt-0.5">{formatNumber(pt.x)} views · {pt.y.toFixed(2)}% ER</div>
+      <div className="text-gray-500 mt-0.5">{formatNumber(pt.rawX)} views · {pt.y.toFixed(2)}% ER</div>
     </div>
   )
 }
@@ -233,19 +240,30 @@ export default function InstagramPage() {
     return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: d.interactions, ma: ma[i] }))
   }, [histLast])
   const scatterData = useMemo(() => {
-    type Pt = { x: number; y: number; type: string; desc: string }
-    const pts: Pt[] = regularPosts.map(p => ({
-      x: p.views,
+    type Pt = { x: number; rawX: number; y: number; type: string; desc: string }
+    const nonStories = regularPosts.filter(p => p.type !== 'Story')
+    const pts: Pt[] = nonStories.map(p => ({
+      rawX: p.views,
+      x: Math.log10(Math.max(p.views, 1)),
       y: +erForPost(p).toFixed(2),
       type: p.type,
       desc: (p.description || '(sin título)').slice(0, 40),
     }))
-    const avgX = pts.length ? pts.reduce((a, p) => a + p.x, 0) / pts.length : 0
+    const avgLogX = pts.length ? pts.reduce((a, p) => a + p.x, 0) / pts.length : 0
     const avgY = pts.length ? pts.reduce((a, p) => a + p.y, 0) / pts.length : 0
-    const byType = (['Reel', 'Post', 'Collab', 'Story'] as const)
+    const xTicks: number[] = []
+    const xDomain: [number, number] = [0, 6]
+    if (pts.length) {
+      const minLog = Math.floor(Math.min(...pts.map(p => p.x)) - 0.3)
+      const maxLog = Math.ceil(Math.max(...pts.map(p => p.x)) + 0.3)
+      for (let t = Math.max(0, minLog); t <= maxLog; t++) xTicks.push(t)
+      xDomain[0] = Math.max(0, minLog)
+      xDomain[1] = maxLog
+    }
+    const byType = (['Reel', 'Post', 'Collab'] as const)
       .map(t => ({ type: t as string, pts: pts.filter(p => p.type === t) }))
       .filter(g => g.pts.length > 0)
-    return { pts, avgX, avgY, byType }
+    return { pts, avgLogX, avgY, byType, xTicks, xDomain }
   }, [regularPosts])
   const erChart = useMemo(() => {
     const vals = histLast.map(d => d.er)
@@ -377,16 +395,16 @@ export default function InstagramPage() {
               {/* 2. Scatter: Alcance vs Engagement (replaces Nuevos seguidores) */}
               <div className={chartCardCls}>
                 <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Alcance vs Engagement</div>
-                {regularPosts.length >= 5 ? (
+                {scatterData.pts.length >= 5 ? (
                   <div className="relative">
                     <ResponsiveContainer width="100%" height={180}>
                       <ScatterChart margin={{ top: 16, right: 8, left: 0, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                        <XAxis type="number" dataKey="x" name="Views" tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} />
+                        <XAxis type="number" dataKey="x" name="Views" tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={logTickFmt} ticks={scatterData.xTicks} domain={scatterData.xDomain} axisLine={false} tickLine={false} />
                         <YAxis type="number" dataKey="y" name="ER%" tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => `${v}%`} axisLine={false} tickLine={false} width={36} />
                         <ZAxis range={[40, 40]} />
                         <Tooltip content={<ScatterTooltip />} />
-                        <ReferenceLine x={scatterData.avgX} stroke="#d1d5db" strokeDasharray="4 2" strokeWidth={1} />
+                        <ReferenceLine x={scatterData.avgLogX} stroke="#d1d5db" strokeDasharray="4 2" strokeWidth={1} />
                         <ReferenceLine y={scatterData.avgY} stroke="#d1d5db" strokeDasharray="4 2" strokeWidth={1} />
                         {scatterData.byType.map(({ type, pts }) => (
                           <Scatter key={type} name={type} data={pts} fill={IG_SCATTER_COLORS[type] ?? '#6b7280'} opacity={0.85} />
@@ -400,7 +418,7 @@ export default function InstagramPage() {
                   </div>
                 ) : (
                   <div className="h-40 flex items-center justify-center text-xs text-gray-400 text-center px-4">
-                    Cargá al menos 5 posts para ver este análisis
+                    Cargá al menos 5 Reels o Posts para ver este análisis
                   </div>
                 )}
               </div>

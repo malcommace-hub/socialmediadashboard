@@ -14,13 +14,20 @@ import {
 } from 'recharts'
 import Link from 'next/link'
 
-function ScatterTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: { desc: string; x: number; y: number } }> }) {
+function logTickFmt(v: number): string {
+  const n = Math.pow(10, v)
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(0)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(0)}k`
+  return String(Math.round(n))
+}
+
+function ScatterTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: { desc: string; rawX: number; y: number } }> }) {
   if (!active || !payload?.length) return null
   const pt = payload[0].payload
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-2 text-xs shadow-lg">
       <div className="font-medium text-gray-800 max-w-[160px] truncate">{pt.desc}</div>
-      <div className="text-gray-500 mt-0.5">{formatNumber(pt.x)} impr. · {pt.y.toFixed(2)}% ER</div>
+      <div className="text-gray-500 mt-0.5">{formatNumber(pt.rawX)} impr. · {pt.y.toFixed(2)}% ER</div>
     </div>
   )
 }
@@ -164,15 +171,25 @@ export default function LinkedInPage() {
     return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: d.interactions, ma: ma[i] }))
   }, [histLast])
   const liScatterData = useMemo(() => {
-    type Pt = { x: number; y: number; desc: string }
+    type Pt = { x: number; rawX: number; y: number; desc: string }
     const pts: Pt[] = posts.map(p => ({
-      x: p.impressions,
+      rawX: p.impressions,
+      x: Math.log10(Math.max(p.impressions, 1)),
       y: +(p.er_decimal * 100).toFixed(2),
       desc: (p.title || '(sin título)').slice(0, 40),
     }))
-    const avgX = pts.length ? pts.reduce((a, p) => a + p.x, 0) / pts.length : 0
+    const avgLogX = pts.length ? pts.reduce((a, p) => a + p.x, 0) / pts.length : 0
     const avgY = pts.length ? pts.reduce((a, p) => a + p.y, 0) / pts.length : 0
-    return { pts, avgX, avgY }
+    const xTicks: number[] = []
+    const xDomain: [number, number] = [0, 6]
+    if (pts.length) {
+      const minLog = Math.floor(Math.min(...pts.map(p => p.x)) - 0.3)
+      const maxLog = Math.ceil(Math.max(...pts.map(p => p.x)) + 0.3)
+      for (let t = Math.max(0, minLog); t <= maxLog; t++) xTicks.push(t)
+      xDomain[0] = Math.max(0, minLog)
+      xDomain[1] = maxLog
+    }
+    return { pts, avgLogX, avgY, xTicks, xDomain }
   }, [posts])
   const erChart = useMemo(() => {
     const vals = histLast.map(d => d.er)
@@ -312,16 +329,16 @@ export default function LinkedInPage() {
               {/* Scatter: Alcance vs Engagement (replaces Nuevos seguidores) */}
               <div className={chartCardCls}>
                 <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Alcance vs Engagement</div>
-                {posts.length >= 5 ? (
+                {liScatterData.pts.length >= 5 ? (
                   <div className="relative">
                     <ResponsiveContainer width="100%" height={180}>
                       <ScatterChart margin={{ top: 16, right: 8, left: 0, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                        <XAxis type="number" dataKey="x" name="Impr." tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} />
+                        <XAxis type="number" dataKey="x" name="Impr." tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={logTickFmt} ticks={liScatterData.xTicks} domain={liScatterData.xDomain} axisLine={false} tickLine={false} />
                         <YAxis type="number" dataKey="y" name="ER%" tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => `${v}%`} axisLine={false} tickLine={false} width={36} />
                         <ZAxis range={[40, 40]} />
                         <Tooltip content={<ScatterTooltip />} />
-                        <ReferenceLine x={liScatterData.avgX} stroke="#d1d5db" strokeDasharray="4 2" strokeWidth={1} />
+                        <ReferenceLine x={liScatterData.avgLogX} stroke="#d1d5db" strokeDasharray="4 2" strokeWidth={1} />
                         <ReferenceLine y={liScatterData.avgY} stroke="#d1d5db" strokeDasharray="4 2" strokeWidth={1} />
                         <Scatter name="Posts" data={liScatterData.pts} fill="#0ea5e9" opacity={0.85} />
                       </ScatterChart>
