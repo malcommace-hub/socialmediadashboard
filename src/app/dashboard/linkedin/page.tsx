@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { MonthSelector } from '@/components/ui/month-selector'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { getLinkedInStats, getLinkedInHistory, deleteLinkedInPost, upsertLinkedInMonthlyTotals } from '@/lib/queries'
+import { getLinkedInStats, getLinkedInHistory, deleteLinkedInPost, upsertLinkedInMonthlyTotals, getLinkedInPostDates } from '@/lib/queries'
 import { formatNumber, formatPercent, currentYearMonth, monthLabel, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
 import type { LinkedInStats } from '@/lib/types'
 import { Trash2, ExternalLink, ChevronUp, ChevronDown, Upload, Plus, PencilLine } from 'lucide-react'
@@ -13,6 +13,27 @@ import {
   ScatterChart, Scatter, ZAxis, ReferenceLine,
 } from 'recharts'
 import Link from 'next/link'
+
+// ISO-week Monday index (unique integer per week)
+function isoWeekIndex(dateStr: string): number {
+  const d = new Date(dateStr + 'T12:00:00Z')
+  const day = d.getUTCDay() // 0=Sun
+  d.setUTCDate(d.getUTCDate() - (day === 0 ? 6 : day - 1)) // rewind to Monday
+  d.setUTCHours(0, 0, 0, 0)
+  return Math.floor(d.getTime() / (7 * 24 * 60 * 60 * 1000))
+}
+
+function computeLinkedInStreak(dates: string[]): number {
+  if (!dates.length) return 0
+  const weeks = new Set(dates.map(isoWeekIndex))
+  const sorted = Array.from(weeks).sort((a, b) => b - a)
+  let streak = 1
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] === sorted[i - 1] - 1) streak++
+    else break
+  }
+  return streak
+}
 
 function LiFollowerDot(props: {
   cx?: number; cy?: number; value?: number
@@ -90,6 +111,13 @@ export default function LinkedInPage() {
   const [avgER, setAvgER] = useState('')
   const [saving, setSaving] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [postDates, setPostDates] = useState<string[]>([])
+
+  useEffect(() => {
+    getLinkedInPostDates().then(setPostDates).catch(() => {})
+  }, [])
+
+  const streak = useMemo(() => computeLinkedInStreak(postDates), [postDates])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -270,8 +298,19 @@ export default function LinkedInPage() {
         <>
           {/* Month summary */}
           {summaryText && (
-            <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-xs text-gray-500 mb-5">
+            <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-xs text-gray-500 mb-3">
               {summaryText}
+            </div>
+          )}
+
+          {/* Publication streak badge */}
+          {streak >= 2 && (
+            <div className="mb-5">
+              <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full ${
+                streak >= 4 ? 'bg-orange-50 text-orange-600' : 'bg-blue-50 text-blue-600'
+              }`}>
+                {streak >= 4 ? '🔥' : '📅'} {streak} semanas consecutivas publicando
+              </span>
             </div>
           )}
 

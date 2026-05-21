@@ -517,6 +517,18 @@ export async function getInstagramTopPosts(year: number, limit = 12) {
   }))
 }
 
+// ─── LinkedIn post dates (for streak calc) ───
+
+export async function getLinkedInPostDates(): Promise<string[]> {
+  const { data } = await supabase
+    .from('linkedin_posts')
+    .select('post_date')
+    .not('post_date', 'is', null)
+    .order('post_date', { ascending: false })
+    .limit(200)
+  return (data ?? []).map((p: { post_date: string }) => p.post_date).filter(Boolean)
+}
+
 // ─── Monthly notes ───────────────────────────
 
 export async function getMonthlyNote(year: number, month: number) {
