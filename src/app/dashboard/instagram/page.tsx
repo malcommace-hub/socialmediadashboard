@@ -129,6 +129,7 @@ export default function InstagramPage() {
   const [collabWithout, setCollabWithout] = useState(0)
   const [collabsOpen, setCollabsOpen] = useState(false)
   const [weeklyOpen, setWeeklyOpen] = useState(false)
+  const [presentationMode, setPresentationMode] = useState(false)
   const [expandedCollab, setExpandedCollab] = useState<string | null>(null)
   const [collabPostsMap, setCollabPostsMap] = useState<Record<string, InstagramPost[]>>({})
   const [loadingCollab, setLoadingCollab] = useState<string | null>(null)
@@ -138,6 +139,14 @@ export default function InstagramPage() {
       setCollabComparison(comparison)
       setCollabWithout(withoutAccount)
     }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    const check = () => setPresentationMode(document.body.classList.contains('presentation-mode'))
+    check()
+    const obs = new MutationObserver(check)
+    obs.observe(document.body, { attributeFilter: ['class'] })
+    return () => obs.disconnect()
   }, [])
 
   const load = useCallback(async () => {
@@ -240,7 +249,7 @@ export default function InstagramPage() {
   const posts = stats?.posts ?? []
   const externalCollabs = posts.filter(p => p.is_manual && p.type === 'Collab')
   const regularPosts = posts.filter(p => !(p.is_manual && p.type === 'Collab'))
-  const filtered = filterType === 'all' ? regularPosts : regularPosts.filter(p => p.type === filterType)
+  const filtered = (presentationMode || filterType === 'all') ? regularPosts : regularPosts.filter(p => p.type === filterType)
   const sorted = [...filtered].sort((a, b) => {
     let av = 0, bv = 0
     if (sortKey === 'views') { av = a.views; bv = b.views }
@@ -366,14 +375,14 @@ export default function InstagramPage() {
   }, [year, month, stats, prevH])
 
   const bestErPostId = useMemo(() => {
-    if (regularPosts.length <= 5) return null
-    const eligible = regularPosts.filter(p => (p.views ?? 0) >= 100)
+    if (filtered.length <= 5) return null
+    const eligible = filtered.filter(p => (p.views ?? 0) >= 100)
     if (!eligible.length) return null
     const bestEr = eligible.reduce((a, b) => erForPost(a) > erForPost(b) ? a : b)
-    const topViews = [...regularPosts].sort((a, b) => (b.views ?? 0) - (a.views ?? 0))[0]
+    const topViews = [...filtered].sort((a, b) => (b.views ?? 0) - (a.views ?? 0))[0]
     if (!topViews || bestEr.id === topViews.id) return null
     return bestEr.id
-  }, [regularPosts])
+  }, [filtered])
 
   // Computed client-side from already-loaded posts — avoids a redundant extra query
   const typeBreakdown = useMemo(() => {
@@ -920,7 +929,7 @@ export default function InstagramPage() {
             <div className="flex items-center justify-between mb-4">
               <CardTitle>Contenido propio del mes ({regularPosts.length} posts)</CardTitle>
               <div className="flex gap-2 flex-wrap">
-                <div className="flex gap-1">
+                <div className="presentation-hide flex gap-1">
                   {['all', 'Reel', 'Post', 'Collab', 'Story'].map(t => (
                     <button key={t} onClick={() => setFilterType(t)}
                       className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-colors ${filterType === t ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
