@@ -564,7 +564,7 @@ export default function OverviewPage() {
       })
     }
     if (note) {
-      lines.push('', 'EN SEEDS LO VEMOS')
+      lines.push('', 'INSIGHTS DEL MES')
       lines.push(note)
     }
     const text = lines.join('\n')
@@ -1122,11 +1122,11 @@ export default function OverviewPage() {
             />
           </div>
 
-          {/* En Seeds lo vemos */}
+          {/* Insights del mes */}
           {current && (
             <div className="mt-8">
               <div className="flex items-center justify-between mb-3">
-                <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">En Seeds lo vemos</h2>
+                <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Insights del mes</h2>
                 <span className="presentation-hide text-xs h-4">
                   {saveStatus === 'saving' && <span className="text-gray-400">Guardando...</span>}
                   {saveStatus === 'saved' && <span className="text-emerald-500">Guardado ✓</span>}
