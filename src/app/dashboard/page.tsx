@@ -181,6 +181,7 @@ export default function OverviewPage() {
 
   const [note, setNote] = useState('')
   const [saveStatus, setSaveStatus] = useState<'' | 'saving' | 'saved'>('')
+  const [copied, setCopied] = useState(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -275,12 +276,94 @@ export default function OverviewPage() {
 
   const maLabel = `Media ${maWindow}m`
 
+  const qBanner = useMemo(() => {
+    if (!current || !history.length) return null
+    const curQ = Math.ceil(current.month / 3)
+    const prevQNum = curQ === 1 ? 4 : curQ - 1
+    const prevQYear = curQ === 1 ? current.year - 1 : current.year
+    const inQ = (d: HistoryPoint, q: number, y: number) => d.year === y && Math.ceil(d.month / 3) === q
+    const curQData = history.filter(d => inQ(d, curQ, current.year))
+    const prevQData = history.filter(d => inQ(d, prevQNum, prevQYear))
+    if (!prevQData.length) return null
+    const sumQ = (rows: HistoryPoint[], fn: (d: HistoryPoint) => number) => rows.reduce((a, d) => a + fn(d), 0)
+    const curImpQ = sumQ(curQData, d => d.igImpressions + d.liImpressions + d.ttViews + d.ytViews)
+    const prevImpQ = sumQ(prevQData, d => d.igImpressions + d.liImpressions + d.ttViews + d.ytViews)
+    const curFollQ = sumQ(curQData, d => d.igNewFollowers + d.liNewFollowers + d.ttNewFollowers)
+    const prevFollQ = sumQ(prevQData, d => d.igNewFollowers + d.liNewFollowers + d.ttNewFollowers)
+    const curIntQ = sumQ(curQData, d => d.igInteractions + d.liInteractions + d.ttInteractions)
+    const curImpER = sumQ(curQData, d => d.igImpressions + d.liImpressions)
+    const prevIntQ = sumQ(prevQData, d => d.igInteractions + d.liInteractions + d.ttInteractions)
+    const prevImpER = sumQ(prevQData, d => d.igImpressions + d.liImpressions)
+    const curERQ = curImpER > 0 ? (curIntQ / curImpER) * 100 : null
+    const prevERQ = prevImpER > 0 ? (prevIntQ / prevImpER) * 100 : null
+    return { curQ, year: current.year, prevQNum, curImpQ, prevImpQ, curFollQ, prevFollQ, curERQ, prevERQ }
+  }, [current, history])
+
+  function handleCopy() {
+    if (!current) return
+    const impPct = pctChange(curImp, prevImp)
+    const follPct = pctChange(curFoll, prevFoll)
+    const lines: string[] = [
+      `Seeds — Resumen ${shortMonthLabel(current.year, current.month)}`,
+      '',
+      'OVERVIEW',
+      `Impresiones: ${formatNumber(curImp)}${impPct !== null ? ` (${impPct >= 0 ? '+' : ''}${impPct.toFixed(1)}% vs mes ant.)` : ''}`,
+      `Seguidores: +${formatNumber(curFoll)}${follPct !== null ? ` (${follPct >= 0 ? '+' : ''}${follPct.toFixed(1)}% vs mes ant.)` : ''}`,
+      `Interacciones: ${formatNumber(curInt)}`,
+    ]
+    if (current.liER) lines.push(`LinkedIn ER: ${formatPercent(current.liER)}`)
+    if (current.igER) lines.push(`Instagram ER: ${formatPercent(current.igER)}`)
+    if (igTop.length > 0) {
+      lines.push('', 'TOP INSTAGRAM')
+      igTop.slice(0, 5).forEach((p, i) => {
+        lines.push(`${i + 1}. ${p.description || '—'} (${formatNumber(p.views)} views, ${p.er.toFixed(2)}% ER)`)
+      })
+    }
+    if (liTop.length > 0) {
+      lines.push('', 'TOP LINKEDIN')
+      liTop.slice(0, 5).forEach((p, i) => {
+        lines.push(`${i + 1}. ${p.title || '—'} (${formatNumber(p.impressions)} impr., ${p.er.toFixed(2)}% ER)`)
+      })
+    }
+    if (note) {
+      lines.push('', 'EN SEEDS LO VEMOS')
+      lines.push(note)
+    }
+    const text = lines.join('\n')
+    const doSet = () => { setCopied(true); setTimeout(() => setCopied(false), 2000) }
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(doSet).catch(() => fallbackCopy(text, doSet))
+    } else {
+      fallbackCopy(text, doSet)
+    }
+  }
+
+  function fallbackCopy(text: string, onSuccess: () => void) {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0'
+    document.body.appendChild(ta)
+    ta.focus(); ta.select()
+    try { document.execCommand('copy'); onSuccess() } catch {}
+    document.body.removeChild(ta)
+  }
+
   return (
     <div className="p-8 max-w-7xl mx-auto">
-      <div className="mb-6">
+      <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">
           Overview general{current ? ` — ${shortMonthLabel(current.year, current.month)}` : ''}
         </h1>
+        {current && (
+          <button
+            onClick={handleCopy}
+            className={`text-sm px-4 py-1.5 rounded-lg font-medium transition-colors ${
+              copied ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {copied ? '✓ Copiado' : 'Copiar resumen'}
+          </button>
+        )}
       </div>
 
       {loading ? (
@@ -311,6 +394,40 @@ export default function OverviewPage() {
               </button>
             ))}
           </div>
+
+          {/* Q banner */}
+          {qBanner && (
+            <div className="bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-100 rounded-2xl px-5 py-3 mb-6 flex flex-wrap items-center gap-x-5 gap-y-2">
+              <span className="text-xs font-bold text-indigo-700 tracking-wider">Q{qBanner.curQ} {qBanner.year}</span>
+              <div className="hidden sm:block w-px h-4 bg-indigo-200" />
+              {[
+                { label: 'Impresiones', cur: qBanner.curImpQ, prev: qBanner.prevImpQ },
+                { label: 'Seguidores', cur: qBanner.curFollQ, prev: qBanner.prevFollQ },
+              ].map(({ label, cur, prev }) => {
+                const pct = pctChange(cur, prev)
+                return (
+                  <span key={label} className="text-xs text-gray-600">
+                    {label}{' '}
+                    {pct !== null && (
+                      <span className={`font-semibold ${pct >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                        {pct >= 0 ? '+' : ''}{pct.toFixed(1)}%
+                      </span>
+                    )}{' '}
+                    <span className="text-gray-400">vs Q{qBanner.prevQNum}</span>
+                  </span>
+                )
+              })}
+              {qBanner.curERQ !== null && qBanner.prevERQ !== null && (
+                <span className="text-xs text-gray-600">
+                  ER{' '}
+                  <span className={`font-semibold ${qBanner.curERQ >= qBanner.prevERQ ? 'text-emerald-600' : 'text-red-500'}`}>
+                    {qBanner.curERQ >= qBanner.prevERQ ? '+' : ''}{(qBanner.curERQ - qBanner.prevERQ).toFixed(2)}pp
+                  </span>{' '}
+                  <span className="text-gray-400">vs Q{qBanner.prevQNum}</span>
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Score del mes */}
           {current && <MonthScoreCard current={current} history={history} />}

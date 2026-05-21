@@ -126,6 +126,7 @@ export default function InstagramPage() {
   const [collabComparison, setCollabComparison] = useState<CollabRow[]>([])
   const [collabWithout, setCollabWithout] = useState(0)
   const [collabsOpen, setCollabsOpen] = useState(false)
+  const [weeklyOpen, setWeeklyOpen] = useState(false)
 
   useEffect(() => {
     getInstagramCollabComparison().then(({ comparison, withoutAccount }) => {
@@ -368,6 +369,43 @@ export default function InstagramPage() {
       .sort((a, b) => b.avgViews - a.avgViews)
   }, [stats])
 
+  const weeklyActivity = useMemo(() => {
+    const withDate = regularPosts.filter(p => p.post_date)
+    if (withDate.length < 5) return null
+    const defs = [
+      { label: 'Sem 1', range: '1–7', lo: 1, hi: 7 },
+      { label: 'Sem 2', range: '8–14', lo: 8, hi: 14 },
+      { label: 'Sem 3', range: '15–21', lo: 15, hi: 21 },
+      { label: 'Sem 4', range: '22–28', lo: 22, hi: 28 },
+      { label: 'Sem 5', range: '29–31', lo: 29, hi: 31 },
+    ]
+    return defs.map(def => {
+      const bucket = withDate.filter(p => {
+        const d = new Date(p.post_date! + 'T12:00:00Z').getUTCDate()
+        return d >= def.lo && d <= def.hi
+      })
+      return {
+        label: def.label, range: def.range,
+        count: bucket.length,
+        totalViews: bucket.reduce((a, p) => a + p.views, 0),
+        avgER: bucket.length ? bucket.reduce((a, p) => a + erForPost(p), 0) / bucket.length : 0,
+      }
+    }).filter(w => w.count > 0)
+  }, [regularPosts])
+
+  const freqBadge = useMemo(() => {
+    const withDate = regularPosts.filter(p => p.post_date)
+    if (!withDate.length) return null
+    const weekCounts: Record<number, number> = {}
+    for (const p of withDate) {
+      const day = new Date(p.post_date! + 'T12:00:00Z').getUTCDate()
+      const wk = day <= 7 ? 1 : day <= 14 ? 2 : day <= 21 ? 3 : day <= 28 ? 4 : 5
+      weekCounts[wk] = (weekCounts[wk] ?? 0) + 1
+    }
+    const counts = Object.values(weekCounts)
+    return counts.reduce((a, b) => a + b, 0) / counts.length
+  }, [regularPosts])
+
   const chartCardCls = 'bg-white rounded-2xl border border-gray-100 p-4 shadow-sm'
 
   return (
@@ -393,8 +431,17 @@ export default function InstagramPage() {
         <>
           {/* Month summary */}
           {summaryText && (
-            <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-xs text-gray-500 mb-5">
+            <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-xs text-gray-500 mb-3">
               {summaryText}
+            </div>
+          )}
+          {freqBadge !== null && (
+            <div className={`inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-semibold mb-5 ${
+              freqBadge >= 3 ? 'bg-emerald-100 text-emerald-700' :
+              freqBadge >= 1 ? 'bg-amber-100 text-amber-700' :
+              'bg-red-100 text-red-700'
+            }`}>
+              ~{freqBadge.toFixed(1)} posts/sem
             </div>
           )}
 
@@ -723,7 +770,7 @@ export default function InstagramPage() {
 
           {/* Content type breakdown */}
           {typeBreakdown.length >= 2 && (
-            <Card>
+            <Card className="mb-6">
               <CardHeader><CardTitle>Rendimiento por tipo de contenido</CardTitle></CardHeader>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -749,6 +796,46 @@ export default function InstagramPage() {
                   </tbody>
                 </table>
               </div>
+            </Card>
+          )}
+
+          {/* Weekly activity */}
+          {weeklyActivity && weeklyActivity.length > 0 && (
+            <Card className="mb-6">
+              <div
+                className="flex items-center justify-between cursor-pointer select-none"
+                onClick={() => setWeeklyOpen(o => !o)}
+              >
+                <span className="text-sm font-semibold text-gray-700">Actividad semanal</span>
+                <span className="text-gray-400">{weeklyOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</span>
+              </div>
+              {weeklyOpen && (
+                <div className="mt-4 overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-100">
+                        <th className="text-left py-2 px-3 text-xs font-medium text-gray-400">Semana</th>
+                        <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Posts</th>
+                        <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Views totales</th>
+                        <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">ER% promedio</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {weeklyActivity.map(w => (
+                        <tr key={w.label} className="border-b border-gray-50 hover:bg-gray-50">
+                          <td className="py-2 px-3 text-gray-700">
+                            <span className="font-medium">{w.label}</span>
+                            <span className="text-gray-400 text-xs ml-1">({w.range})</span>
+                          </td>
+                          <td className="py-2 px-3 text-right text-gray-700">{w.count}</td>
+                          <td className="py-2 px-3 text-right font-medium">{formatNumber(w.totalViews)}</td>
+                          <td className="py-2 px-3 text-right text-gray-600">{formatPercent(w.avgER)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </Card>
           )}
 
