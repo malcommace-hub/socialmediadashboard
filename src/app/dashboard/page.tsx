@@ -1,13 +1,13 @@
 'use client'
 import { useEffect, useState, useMemo } from 'react'
 import { Card } from '@/components/ui/card'
-import { getOverviewHistory } from '@/lib/queries'
+import { getOverviewHistory, getInstagramTopPosts, getLinkedInTopPosts } from '@/lib/queries'
 import { formatNumber, formatPercent, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, LabelList,
 } from 'recharts'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react'
 import { MonthScoreCard } from '@/components/dashboard/MonthScoreCard'
 
 type HistoryPoint = Awaited<ReturnType<typeof getOverviewHistory>>[0]
@@ -173,6 +173,18 @@ export default function OverviewPage() {
   const [maWindow, setMaWindow] = useState(3)
   const [offset, setOffset] = useState(0)
 
+  type IgTop = Awaited<ReturnType<typeof getInstagramTopPosts>>[0]
+  type LiTop = Awaited<ReturnType<typeof getLinkedInTopPosts>>[0]
+  const [igTop, setIgTop] = useState<IgTop[]>([])
+  const [liTop, setLiTop] = useState<LiTop[]>([])
+  const [topOpen, setTopOpen] = useState(false)
+
+  useEffect(() => {
+    Promise.all([getInstagramTopPosts(), getLinkedInTopPosts()])
+      .then(([ig, li]) => { setIgTop(ig); setLiTop(li) })
+      .catch(() => {})
+  }, [])
+
   useEffect(() => {
     setLoading(true)
     getOverviewHistory().then(data => {
@@ -271,6 +283,91 @@ export default function OverviewPage() {
 
           {/* Score del mes */}
           {current && <MonthScoreCard current={current} history={history} />}
+
+          {/* Top 10 posts all-time (collapsible) */}
+          {(igTop.length > 0 || liTop.length > 0) && (
+            <Card className="mb-6">
+              <div
+                className="flex items-center justify-between cursor-pointer select-none"
+                onClick={() => setTopOpen(o => !o)}
+              >
+                <span className="text-sm font-semibold text-gray-700">Top posts all-time</span>
+                <span className="text-gray-400">{topOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</span>
+              </div>
+              {topOpen && (
+                <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Instagram top 10 */}
+                  {igTop.length > 0 && (
+                    <div>
+                      <div className="text-xs font-semibold tracking-wider text-gray-400 uppercase mb-2">Top 10 Instagram all-time</div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-gray-100">
+                              <th className="text-left py-1.5 px-2 text-xs font-medium text-gray-400">Mes</th>
+                              <th className="text-left py-1.5 px-2 text-xs font-medium text-gray-400">Descripción</th>
+                              <th className="text-right py-1.5 px-2 text-xs font-medium text-gray-400">Views</th>
+                              <th className="text-right py-1.5 px-2 text-xs font-medium text-gray-400">ER%</th>
+                              <th className="py-1.5 px-2 w-6" />
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {igTop.map((p, i) => (
+                              <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
+                                <td className="py-1.5 px-2 text-xs text-gray-500 whitespace-nowrap">{shortMonthLabel(p.year, p.month)}</td>
+                                <td className="py-1.5 px-2 text-gray-700 max-w-[160px] truncate text-xs">{p.description || '—'}</td>
+                                <td className="py-1.5 px-2 text-right font-medium text-xs">{formatNumber(p.views)}</td>
+                                <td className="py-1.5 px-2 text-right text-xs text-gray-600">{p.er.toFixed(2)}%</td>
+                                <td className="py-1.5 px-2 text-right">
+                                  {p.permalink && !p.permalink.startsWith('manual:')
+                                    ? <a href={p.permalink} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 inline-flex"><ExternalLink size={12} /></a>
+                                    : null}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                  {/* LinkedIn top 10 */}
+                  {liTop.length > 0 && (
+                    <div>
+                      <div className="text-xs font-semibold tracking-wider text-gray-400 uppercase mb-2">Top 10 LinkedIn all-time</div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-gray-100">
+                              <th className="text-left py-1.5 px-2 text-xs font-medium text-gray-400">Mes</th>
+                              <th className="text-left py-1.5 px-2 text-xs font-medium text-gray-400">Título</th>
+                              <th className="text-right py-1.5 px-2 text-xs font-medium text-gray-400">Impr.</th>
+                              <th className="text-right py-1.5 px-2 text-xs font-medium text-gray-400">ER%</th>
+                              <th className="py-1.5 px-2 w-6" />
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {liTop.map((p, i) => (
+                              <tr key={i} className="border-b border-gray-50 hover:bg-gray-50">
+                                <td className="py-1.5 px-2 text-xs text-gray-500 whitespace-nowrap">{shortMonthLabel(p.year, p.month)}</td>
+                                <td className="py-1.5 px-2 text-gray-700 max-w-[160px] truncate text-xs">{p.title || '—'}</td>
+                                <td className="py-1.5 px-2 text-right font-medium text-xs">{formatNumber(p.impressions)}</td>
+                                <td className="py-1.5 px-2 text-right text-xs text-gray-600">{p.er.toFixed(2)}%</td>
+                                <td className="py-1.5 px-2 text-right">
+                                  {p.permalink
+                                    ? <a href={p.permalink} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 inline-flex"><ExternalLink size={12} /></a>
+                                    : null}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </Card>
+          )}
 
           {/* KPI cards */}
           <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">

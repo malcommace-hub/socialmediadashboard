@@ -498,3 +498,26 @@ export async function getAvailableMonths() {
 
   return unique
 }
+
+export async function getInstagramTopPosts(limit = 10) {
+  const { data } = await supabase
+    .from('instagram_posts')
+    .select('year,month,description,type,views,impressions,likes,comments,shares,saves,permalink,collab_account')
+    .order('views', { ascending: false })
+    .limit(limit)
+  return (data ?? []).map(p => ({
+    ...p,
+    er: (p.impressions ?? 0) > 0
+      ? (((p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0) + (p.saves ?? 0)) / p.impressions) * 100
+      : 0,
+  }))
+}
+
+export async function getLinkedInTopPosts(limit = 10) {
+  const { data } = await supabase
+    .from('linkedin_posts')
+    .select('year,month,title,impressions,er_decimal,permalink')
+    .order('impressions', { ascending: false })
+    .limit(limit)
+  return (data ?? []).map(p => ({ ...p, er: (p.er_decimal ?? 0) * 100 }))
+}
