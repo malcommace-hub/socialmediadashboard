@@ -358,11 +358,13 @@ export default function OverviewPage() {
 
   useEffect(() => {
     if (!selectedYear || !selectedMonth) return
+    let cancelled = false
     setNote('')
     setSaveStatus('')
     getMonthlyNote(selectedYear, selectedMonth)
-      .then(data => setNote(data?.content ?? ''))
+      .then(data => { if (!cancelled) setNote(data?.content ?? '') })
       .catch(() => {})
+    return () => { cancelled = true }
   }, [selectedYear, selectedMonth])
 
   function handleNoteChange(value: string) {
