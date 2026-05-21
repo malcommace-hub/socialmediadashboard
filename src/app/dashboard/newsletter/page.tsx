@@ -9,6 +9,7 @@ import type { NewsletterEpisode } from '@/lib/types'
 import { Trash2, Plus, RefreshCw, ExternalLink } from 'lucide-react'
 import { SkeletonCard } from '@/components/dashboard/SkeletonCard'
 import { clearCache } from '@/lib/queryCache'
+import { FollowerDot } from '@/components/dashboard/FollowerDot'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LabelList, AreaChart, Area,
@@ -28,29 +29,7 @@ function TrendBadge({ value, prev }: { value: number; prev: number | undefined }
   )
 }
 
-// Recharts injects cx/cy/value/payload via cloneElement when used as <Line dot={<NLFollowerDot/>}/>
-function NLFollowerDot(props: {
-  cx?: number; cy?: number; value?: number
-  payload?: { pctChange?: number | null }
-  [k: string]: unknown
-}) {
-  const { cx, cy, value, payload } = props
-  if (!value || !cx || !cy) return <g />
-  const pct = payload?.pctChange ?? null
-  return (
-    <g>
-      <circle cx={cx} cy={cy} r={3.5} fill="#f97316" />
-      <text x={cx} y={cy - 8} textAnchor="middle" fontSize={10} fontWeight="bold" fill="#374151">
-        {formatNumber(value)}
-      </text>
-      {pct !== null && (
-        <text x={cx} y={cy - 19} textAnchor="middle" fontSize={9} fill={pct >= 0 ? '#10b981' : '#ef4444'}>
-          {pct >= 0 ? '+' : ''}{pct.toFixed(1)}%
-        </text>
-      )}
-    </g>
-  )
-}
+const NLFollowerDot = (props: Record<string, unknown>) => <FollowerDot color="#f97316" {...props} />
 
 export default function NewsletterPage() {
   const { year, month, setYear, setMonth } = useMesParam()

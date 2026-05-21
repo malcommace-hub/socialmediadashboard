@@ -19,6 +19,7 @@ import {
 } from 'recharts'
 import Link from 'next/link'
 import { SkeletonCard } from '@/components/dashboard/SkeletonCard'
+import { FollowerDot } from '@/components/dashboard/FollowerDot'
 import { clearCache } from '@/lib/queryCache'
 import { ratioToScore } from '@/lib/scoring'
 
@@ -40,29 +41,7 @@ const IG_SCATTER_COLORS: Record<string, string> = {
   Reel: '#ec4899', Post: '#3b82f6', Collab: '#8b5cf6',
 }
 
-// Recharts injects cx/cy/value/payload via cloneElement when used as <Line dot={<IgFollowerDot/>}/>
-function IgFollowerDot(props: {
-  cx?: number; cy?: number; value?: number
-  payload?: { pctChange?: number | null }
-  [k: string]: unknown
-}) {
-  const { cx, cy, value, payload } = props
-  if (!value || !cx || !cy) return <g />
-  const pct = payload?.pctChange ?? null
-  return (
-    <g>
-      <circle cx={cx} cy={cy} r={3.5} fill="#ec4899" />
-      <text x={cx} y={cy - 8} textAnchor="middle" fontSize={10} fontWeight="bold" fill="#374151">
-        {formatNumber(value)}
-      </text>
-      {pct !== null && (
-        <text x={cx} y={cy - 19} textAnchor="middle" fontSize={9} fill={pct >= 0 ? '#10b981' : '#ef4444'}>
-          {pct >= 0 ? '+' : ''}{pct.toFixed(1)}%
-        </text>
-      )}
-    </g>
-  )
-}
+const IgFollowerDot = (props: Record<string, unknown>) => <FollowerDot color="#ec4899" {...props} />
 
 function logTickFmt(v: number): string {
   const n = Math.pow(10, v)
