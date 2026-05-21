@@ -52,6 +52,7 @@ export default function InstagramPage() {
   const [stats, setStats] = useState<InstagramStats | null>(null)
   const [history, setHistory] = useState<HistoryPoint[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [sortKey, setSortKey] = useState<SortKey>('views')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [filterType, setFilterType] = useState<string>('all')
@@ -75,17 +76,23 @@ export default function InstagramPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [data, hist] = await Promise.all([
-      getInstagramStats({ year, month }),
-      getInstagramHistory(),
-    ])
-    setStats(data)
-    setHistory(hist)
-    setFollowers(String(data.monthly?.total_followers ?? ''))
-    setNewFollowers(String(data.monthly?.new_followers ?? ''))
-    setViewsApp(String(data.monthly?.total_views_manual ?? ''))
-    setReachApp(String(data.monthly?.total_reach_manual ?? ''))
-    setLoading(false)
+    setError(null)
+    try {
+      const [data, hist] = await Promise.all([
+        getInstagramStats({ year, month }),
+        getInstagramHistory(),
+      ])
+      setStats(data)
+      setHistory(hist)
+      setFollowers(String(data.monthly?.total_followers ?? ''))
+      setNewFollowers(String(data.monthly?.new_followers ?? ''))
+      setViewsApp(String(data.monthly?.total_views_manual ?? ''))
+      setReachApp(String(data.monthly?.total_reach_manual ?? ''))
+    } catch (err) {
+      setError((err as { message?: string })?.message ?? 'Error al cargar datos de Instagram')
+    } finally {
+      setLoading(false)
+    }
   }, [year, month])
 
   useEffect(() => { load() }, [load])
@@ -221,6 +228,11 @@ export default function InstagramPage() {
         <MonthSelector year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m) }} />
       </div>
 
+      {error && (
+        <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+          ⚠ {error}
+        </div>
+      )}
       {loading ? (
         <div className="flex items-center justify-center h-64 text-gray-400">Cargando datos...</div>
       ) : (
@@ -297,7 +309,10 @@ export default function InstagramPage() {
             {editMonthly ? (
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">Views totales (app)</label>
+                  <label className="text-xs text-gray-500 block mb-1">
+                    Views totales (app)
+                    <span className="ml-1 text-gray-400 cursor-help" title="Ingresá el total del Meta overview. No incluyas posts de colaboraciones externas — esos se agregan automáticamente.">ⓘ</span>
+                  </label>
                   <input type="number" value={viewsApp} onChange={e => setViewsApp(e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                 </div>

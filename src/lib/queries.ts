@@ -63,8 +63,18 @@ export async function upsertInstagramPosts(posts: Omit<InstagramPost, 'id'>[]) {
   return supabase.from('instagram_posts').upsert(posts, { onConflict: 'permalink', ignoreDuplicates: false })
 }
 
+function manualPermalink(year: number, month: number, description?: string | null, postDate?: string | null, collabAccount?: string | null, views?: number, likes?: number): string {
+  const str = [year, month, description ?? '', postDate ?? '', collabAccount ?? '', views ?? 0, likes ?? 0].join('|')
+  let h = 0
+  for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0
+  return `manual:${Math.abs(h).toString(16).padStart(8, '0')}`
+}
+
 export async function addInstagramPostManual(post: Omit<InstagramPost, 'id'>) {
-  return supabase.from('instagram_posts').upsert(post, { onConflict: 'permalink', ignoreDuplicates: false }).select().single()
+  const enriched = post.permalink
+    ? post
+    : { ...post, permalink: manualPermalink(post.year, post.month, post.description, post.post_date, post.collab_account, post.views, post.likes) }
+  return supabase.from('instagram_posts').upsert(enriched, { onConflict: 'permalink', ignoreDuplicates: false }).select().single()
 }
 
 export async function deleteInstagramPost(id: string) {

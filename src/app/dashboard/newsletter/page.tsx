@@ -34,21 +34,28 @@ export default function NewsletterPage() {
   const [newSubs, setNewSubs] = useState('')
   const [savedNewSubs, setSavedNewSubs] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [newEp, setNewEp] = useState({ episode_number: '', title: '', views: '', lead_magnet_downloads: '', published_date: '' })
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [data, hist] = await Promise.all([
-      getNewsletterData({ year, month }),
-      getNewsletterHistory(),
-    ])
-    setEpisodes(data.episodes)
-    setHistory(hist)
-    setNewSubs(String(data.monthly?.new_subscribers ?? ''))
-    setSavedNewSubs(data.monthly?.new_subscribers ?? 0)
-    setLoading(false)
+    setError(null)
+    try {
+      const [data, hist] = await Promise.all([
+        getNewsletterData({ year, month }),
+        getNewsletterHistory(),
+      ])
+      setEpisodes(data.episodes)
+      setHistory(hist)
+      setNewSubs(String(data.monthly?.new_subscribers ?? ''))
+      setSavedNewSubs(data.monthly?.new_subscribers ?? 0)
+    } catch (err) {
+      setError((err as { message?: string })?.message ?? 'Error al cargar datos del newsletter')
+    } finally {
+      setLoading(false)
+    }
   }, [year, month])
 
   useEffect(() => { load() }, [load])
@@ -120,6 +127,11 @@ export default function NewsletterPage() {
         <MonthSelector year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m) }} />
       </div>
 
+      {error && (
+        <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+          ⚠ {error}
+        </div>
+      )}
       {loading ? (
         <div className="flex items-center justify-center h-32 text-gray-400">Cargando...</div>
       ) : (

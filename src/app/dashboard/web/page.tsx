@@ -42,27 +42,34 @@ export default function WebPage() {
   const [utmSources, setUtmSources] = useState<WebUtmSource[]>([])
   const [history, setHistory] = useState<HistoryPoint[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [totalSessions, setTotalSessions] = useState('')
   const [utmValues, setUtmValues] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [data, hist] = await Promise.all([
-      getWebData({ year, month }),
-      getWebHistory(),
-    ])
-    setMonthly(data.monthly)
-    setUtmSources(data.utmSources)
-    setHistory(hist)
-    setTotalSessions(String(data.monthly?.total_sessions ?? ''))
-    const vals: Record<string, string> = {}
-    UTM_SOURCES.forEach(s => {
-      const found = data.utmSources.find(u => u.source === s)
-      vals[s] = String(found?.sessions ?? '')
-    })
-    setUtmValues(vals)
-    setLoading(false)
+    setError(null)
+    try {
+      const [data, hist] = await Promise.all([
+        getWebData({ year, month }),
+        getWebHistory(),
+      ])
+      setMonthly(data.monthly)
+      setUtmSources(data.utmSources)
+      setHistory(hist)
+      setTotalSessions(String(data.monthly?.total_sessions ?? ''))
+      const vals: Record<string, string> = {}
+      UTM_SOURCES.forEach(s => {
+        const found = data.utmSources.find(u => u.source === s)
+        vals[s] = String(found?.sessions ?? '')
+      })
+      setUtmValues(vals)
+    } catch (err) {
+      setError((err as { message?: string })?.message ?? 'Error al cargar datos web')
+    } finally {
+      setLoading(false)
+    }
   }, [year, month])
 
   useEffect(() => { load() }, [load])
@@ -125,6 +132,11 @@ export default function WebPage() {
         <MonthSelector year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m) }} />
       </div>
 
+      {error && (
+        <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+          ⚠ {error}
+        </div>
+      )}
       {loading ? (
         <div className="flex items-center justify-center h-32 text-gray-400">Cargando...</div>
       ) : (

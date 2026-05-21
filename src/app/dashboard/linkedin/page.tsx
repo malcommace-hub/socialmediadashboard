@@ -37,6 +37,7 @@ export default function LinkedInPage() {
   const [stats, setStats] = useState<LinkedInStats | null>(null)
   const [history, setHistory] = useState<HistoryPoint[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [sortKey, setSortKey] = useState<SortKey>('impressions')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [editMonthly, setEditMonthly] = useState(false)
@@ -50,20 +51,26 @@ export default function LinkedInPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [data, hist] = await Promise.all([
-      getLinkedInStats({ year, month }),
-      getLinkedInHistory(),
-    ])
-    setStats(data)
-    setHistory(hist)
-    setFollowers(String(data.monthly?.total_followers ?? ''))
-    setNewFollowers(String(data.monthly?.new_followers ?? ''))
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const m = data.monthly as any
-    setTotalImpressions(String(m?.total_impressions ?? ''))
-    setTotalInteractions(String(m?.total_interactions ?? ''))
-    setAvgER(String(m?.avg_er ?? ''))
-    setLoading(false)
+    setError(null)
+    try {
+      const [data, hist] = await Promise.all([
+        getLinkedInStats({ year, month }),
+        getLinkedInHistory(),
+      ])
+      setStats(data)
+      setHistory(hist)
+      setFollowers(String(data.monthly?.total_followers ?? ''))
+      setNewFollowers(String(data.monthly?.new_followers ?? ''))
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const m = data.monthly as any
+      setTotalImpressions(String(m?.total_impressions ?? ''))
+      setTotalInteractions(String(m?.total_interactions ?? ''))
+      setAvgER(String(m?.avg_er ?? ''))
+    } catch (err) {
+      setError((err as { message?: string })?.message ?? 'Error al cargar datos de LinkedIn')
+    } finally {
+      setLoading(false)
+    }
   }, [year, month])
 
   useEffect(() => { load() }, [load])
@@ -172,6 +179,11 @@ export default function LinkedInPage() {
         <MonthSelector year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m) }} />
       </div>
 
+      {error && (
+        <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+          ⚠ {error}
+        </div>
+      )}
       {loading ? (
         <div className="flex items-center justify-center h-64 text-gray-400">Cargando datos...</div>
       ) : (

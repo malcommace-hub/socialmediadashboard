@@ -44,6 +44,7 @@ export default function TikTokPage() {
   const [ytViews, setYtViews] = useState('')
   const [ytSaved, setYtSaved] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [sortKey, setSortKey] = useState<SortKey>('views')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [showAddForm, setShowAddForm] = useState(false)
@@ -53,17 +54,23 @@ export default function TikTokPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [data, hist, ytHist, ytMonthly] = await Promise.all([
-      getTikTokStats({ year, month }),
-      getTikTokHistory(),
-      getYouTubeHistory(),
-      getYouTubeMonthly({ year, month }),
-    ])
-    setStats(data)
-    setHistory(hist)
-    setYtHistory(ytHist)
-    setYtViews(String(ytMonthly.data?.shorts_views ?? ''))
-    setLoading(false)
+    setError(null)
+    try {
+      const [data, hist, ytHist, ytMonthly] = await Promise.all([
+        getTikTokStats({ year, month }),
+        getTikTokHistory(),
+        getYouTubeHistory(),
+        getYouTubeMonthly({ year, month }),
+      ])
+      setStats(data)
+      setHistory(hist)
+      setYtHistory(ytHist)
+      setYtViews(String(ytMonthly.data?.shorts_views ?? ''))
+    } catch (err) {
+      setError((err as { message?: string })?.message ?? 'Error al cargar datos de TikTok')
+    } finally {
+      setLoading(false)
+    }
   }, [year, month])
 
   useEffect(() => { load() }, [load])
@@ -186,6 +193,11 @@ export default function TikTokPage() {
         <MonthSelector year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m) }} />
       </div>
 
+      {error && (
+        <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+          ⚠ {error}
+        </div>
+      )}
       {loading ? (
         <div className="flex items-center justify-center h-64 text-gray-400">Cargando datos...</div>
       ) : (
