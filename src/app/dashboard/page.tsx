@@ -9,6 +9,7 @@ import {
 } from 'recharts'
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ExternalLink, RefreshCw } from 'lucide-react'
 import { SkeletonCard } from '@/components/dashboard/SkeletonCard'
+import { clearCache } from '@/lib/queryCache'
 import { MonthScoreCard } from '@/components/dashboard/MonthScoreCard'
 
 type HistoryPoint = Awaited<ReturnType<typeof getOverviewHistory>>[0]
@@ -413,7 +414,7 @@ export default function OverviewPage() {
         </h1>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setReloadKey(k => k + 1)}
+            onClick={() => { clearCache(); setReloadKey(k => k + 1) }}
             className="presentation-hide p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
             title="Actualizar datos"
           >

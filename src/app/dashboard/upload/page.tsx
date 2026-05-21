@@ -4,6 +4,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { MonthSelector } from '@/components/ui/month-selector'
 import { parseInstagramCSV, parseLinkedInCSV, parseLinkedInXLS, parseLinkedInXLSWithDebug, parseTikTokCSV, parseTikTokOverviewCSV, parseTikTokFollowerHistoryCSV, type LinkedInDebugInfo } from '@/lib/parsers'
 import { upsertInstagramPosts, upsertLinkedInPosts, upsertTikTokVideos, upsertTikTokMonthly } from '@/lib/queries'
+import { clearCache } from '@/lib/queryCache'
 import { currentYearMonth, monthLabel } from '@/lib/utils'
 import { Upload, CheckCircle, AlertCircle, Camera, Briefcase, Music2 } from 'lucide-react'
 
@@ -92,6 +93,7 @@ export default function UploadPage() {
       }))
       const { error } = await upsertInstagramPosts(posts)
       if (error) throw error
+      clearCache()
       setIg(s => ({ ...s, status: 'done' }))
     } catch (err) {
       setIg(s => ({ ...s, status: 'error', error: (err as { message?: string })?.message ?? String(err) }))
@@ -144,6 +146,7 @@ export default function UploadPage() {
       }))
       const { error } = await upsertLinkedInPosts(posts)
       if (error) throw error
+      clearCache()
       setLi(s => ({ ...s, status: 'done' }))
     } catch (err) {
       setLi(s => ({ ...s, status: 'error', error: (err as { message?: string })?.message ?? String(err) }))
@@ -183,6 +186,7 @@ export default function UploadPage() {
       }))
       const { error } = await upsertTikTokVideos(videos)
       if (error) throw error
+      clearCache()
       setTt(s => ({ ...s, status: 'done' }))
     } catch (err) {
       setTt(s => ({ ...s, status: 'error', error: (err as { message?: string })?.message ?? String(err) }))
@@ -210,6 +214,7 @@ export default function UploadPage() {
       const { total_views, total_interactions } = ttOv.preview[0]
       const { error } = await upsertTikTokMonthly({ year, month, total_views, total_interactions })
       if (error) throw error
+      clearCache()
       setTtOv(s => ({ ...s, status: 'done' }))
     } catch (err) {
       setTtOv(s => ({ ...s, status: 'error', error: (err as { message?: string })?.message ?? String(err) }))
@@ -237,6 +242,7 @@ export default function UploadPage() {
       const { total_followers, new_followers } = ttFoll.preview[0]
       const { error } = await upsertTikTokMonthly({ year, month, total_followers, new_followers })
       if (error) throw error
+      clearCache()
       setTtFoll(s => ({ ...s, status: 'done' }))
     } catch (err) {
       setTtFoll(s => ({ ...s, status: 'error', error: (err as { message?: string })?.message ?? String(err) }))

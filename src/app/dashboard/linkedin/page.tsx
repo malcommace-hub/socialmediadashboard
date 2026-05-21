@@ -15,6 +15,7 @@ import {
 } from 'recharts'
 import Link from 'next/link'
 import { SkeletonCard } from '@/components/dashboard/SkeletonCard'
+import { clearCache } from '@/lib/queryCache'
 
 // ISO-week Monday index (unique integer per week)
 function isoWeekIndex(dateStr: string): number {
@@ -286,7 +287,7 @@ export default function LinkedInPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={load}
+            onClick={() => { clearCache(); load() }}
             className="presentation-hide p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
             title="Actualizar datos"
           >

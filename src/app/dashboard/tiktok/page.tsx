@@ -17,6 +17,7 @@ import {
 } from 'recharts'
 import Link from 'next/link'
 import { SkeletonCard } from '@/components/dashboard/SkeletonCard'
+import { clearCache } from '@/lib/queryCache'
 
 type HistoryPoint = Awaited<ReturnType<typeof getTikTokHistory>>[0]
 type YTHistoryPoint = Awaited<ReturnType<typeof getYouTubeHistory>>[0]
@@ -271,7 +272,7 @@ export default function TikTokPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={load}
+            onClick={() => { clearCache(); load() }}
             className="presentation-hide p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
             title="Actualizar datos"
           >

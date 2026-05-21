@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import type { MonthlyFilter, InstagramPost, LinkedInPost, TikTokVideo, NewsletterEpisode, WebUtmSource } from './types'
 import { computeAvgER, computeAvgERFromDecimal } from './utils'
+import { getCached, setCached } from './queryCache'
 
 // ─── Instagram ───────────────────────────────
 
@@ -242,6 +243,8 @@ export async function upsertObjective(data: { year: number; quarter: number; cha
 // ─── Bulk historical data ─────────────────────
 
 export async function getOverviewHistory() {
+  type Item = { year: number; month: number; igImpressions: number; igInteractions: number; igNewFollowers: number; igTotalFollowers: number; igER: number; liImpressions: number; liInteractions: number; liNewFollowers: number; liTotalFollowers: number; liER: number; ttViews: number; ttInteractions: number; ttNewFollowers: number; ttTotalFollowers: number; ytViews: number; newsletterViews: number; igPostCount: number; liPostCount: number }
+  const hit = getCached<Item[]>('overview-history'); if (hit) return hit
   const [igMonthly, liMonthly, liPosts, ttMonthly, ytMonthly, igPosts, nlEpisodes] = await Promise.all([
     supabase.from('instagram_monthly').select('year,month,total_views_manual,total_reach_manual,new_followers,total_followers,total_interactions,avg_er').order('year').order('month'),
     supabase.from('linkedin_monthly').select('year,month,new_followers,total_followers,total_impressions,total_interactions').order('year').order('month'),
@@ -278,7 +281,7 @@ export async function getOverviewHistory() {
   const monthSet = new Set<string>()
   ;[igMonthly, liMonthly, ttMonthly, ytMonthly].forEach(r => (r.data ?? []).forEach((d: {year:number;month:number}) => monthSet.add(`${d.year}-${d.month}`)))
 
-  return Array.from(monthSet).sort().map(key => {
+  const result = Array.from(monthSet).sort().map(key => {
     const [yr, mo] = key.split('-').map(Number)
     const ig = (igMonthly.data ?? []).find((d: {year:number;month:number}) => d.year === yr && d.month === mo)
     const li = (liMonthly.data ?? []).find((d: {year:number;month:number}) => d.year === yr && d.month === mo)
@@ -313,9 +316,13 @@ export async function getOverviewHistory() {
       liPostCount: liM.count,
     }
   })
+  setCached('overview-history', result)
+  return result
 }
 
 export async function getInstagramHistory() {
+  type Item = { year: number; month: number; views: number; reach: number; newFollowers: number; totalFollowers: number; interactions: number; er: number }
+  const hit = getCached<Item[]>('ig-history'); if (hit) return hit
   const [monthly, posts] = await Promise.all([
     supabase.from('instagram_monthly').select('*').order('year').order('month'),
     supabase.from('instagram_posts').select('year,month,views,impressions,likes,comments,shares,saves'),
@@ -333,7 +340,7 @@ export async function getInstagramHistory() {
     monthlyMap[`${(m as Record<string,number>).year}-${(m as Record<string,number>).month}`] = m as Record<string, number | null>
   }
   const monthSet = new Set([...Object.keys(monthlyMap), ...Object.keys(byMonth)])
-  return Array.from(monthSet).sort().map(key => {
+  const result = Array.from(monthSet).sort().map(key => {
     const [yr, mo] = key.split('-').map(Number)
     const m = monthlyMap[key] ?? {}
     const pm = byMonth[key] ?? { interactions: 0, impressions: 0, count: 0 }
@@ -350,6 +357,8 @@ export async function getInstagramHistory() {
       er,
     }
   })
+  setCached('ig-history', result)
+  return result
 }
 
 export async function getInstagramCollabComparison() {
@@ -382,6 +391,8 @@ export async function getInstagramCollabComparison() {
 }
 
 export async function getLinkedInHistory() {
+  type Item = { year: number; month: number; impressions: number; interactions: number; newFollowers: number; totalFollowers: number; er: number }
+  const hit = getCached<Item[]>('li-history'); if (hit) return hit
   const [monthly, posts] = await Promise.all([
     supabase.from('linkedin_monthly').select('*').order('year').order('month'),
     supabase.from('linkedin_posts').select('year,month,impressions,interactions,er_decimal'),
@@ -402,7 +413,7 @@ export async function getLinkedInHistory() {
   }
   // Include all months that appear in either table
   const monthSet = new Set([...Object.keys(monthlyMap), ...Object.keys(byMonth)])
-  return Array.from(monthSet).sort().map(key => {
+  const result = Array.from(monthSet).sort().map(key => {
     const [yr, mo] = key.split('-').map(Number)
     const m = monthlyMap[key] ?? {}
     const pm = byMonth[key] ?? { impressions: 0, interactions: 0, erSum: 0, count: 0 }
@@ -418,6 +429,8 @@ export async function getLinkedInHistory() {
       er,
     }
   })
+  setCached('li-history', result)
+  return result
 }
 
 export async function upsertLinkedInMonthlyTotals(data: {
@@ -430,8 +443,10 @@ export async function upsertLinkedInMonthlyTotals(data: {
 }
 
 export async function getTikTokHistory() {
+  type Item = { year: number; month: number; views: number; interactions: number; newFollowers: number; totalFollowers: number; er: number }
+  const hit = getCached<Item[]>('tt-history'); if (hit) return hit
   const monthly = await supabase.from('tiktok_monthly').select('*').order('year').order('month')
-  return (monthly.data ?? []).map((m: Record<string, number>) => ({
+  const result = (monthly.data ?? []).map((m: Record<string, number>) => ({
     year: m.year, month: m.month,
     views: m.total_views ?? 0,
     interactions: m.total_interactions ?? 0,
@@ -439,9 +454,13 @@ export async function getTikTokHistory() {
     totalFollowers: m.total_followers ?? 0,
     er: (m.total_views ?? 0) > 0 ? ((m.total_interactions ?? 0) / (m.total_views ?? 1)) * 100 : 0,
   })).sort((a: {year:number;month:number}, b: {year:number;month:number}) => a.year - b.year || a.month - b.month)
+  setCached('tt-history', result)
+  return result
 }
 
 export async function getNewsletterHistory() {
+  type Item = { year: number; month: number; views: number; newSubscribers: number }
+  const hit = getCached<Item[]>('nl-history'); if (hit) return hit
   const [monthly, episodes] = await Promise.all([
     supabase.from('newsletter_monthly').select('year,month,new_subscribers').order('year').order('month'),
     supabase.from('newsletter_episodes').select('year,month,views'),
@@ -451,11 +470,13 @@ export async function getNewsletterHistory() {
     const k = `${ep.year}-${ep.month}`
     viewsByMonth[k] = (viewsByMonth[k] ?? 0) + (ep.views ?? 0)
   }
-  return (monthly.data ?? []).map((m: Record<string, number>) => ({
+  const result = (monthly.data ?? []).map((m: Record<string, number>) => ({
     year: m.year, month: m.month,
     views: viewsByMonth[`${m.year}-${m.month}`] ?? 0,
     newSubscribers: m.new_subscribers ?? 0,
   })).sort((a: {year:number;month:number}, b: {year:number;month:number}) => a.year - b.year || a.month - b.month)
+  setCached('nl-history', result)
+  return result
 }
 
 export async function getWebHistory() {
