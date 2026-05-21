@@ -127,7 +127,19 @@ export function calculateMonthScore(current: HP, history: HP[]): ScoreResult {
 export function MonthScoreCard({ current, history }: MonthScoreCardProps) {
   const result = useMemo(() => calculateMonthScore(current, history), [current, history])
 
+  const momentum = useMemo(() => {
+    const idx = history.findIndex(h => h.year === current.year && h.month === current.month)
+    if (idx <= 0) return null
+    const prevMonthData = history[idx - 1]
+    const prevHistory = history.slice(0, idx)
+    const { score: prevScore } = calculateMonthScore(prevMonthData, prevHistory)
+    return result.score - prevScore
+  }, [current, history, result.score])
+
   const { score, isOnlyMonth, factors, dims, histMonths } = result
+
+  const momentumArrow = momentum === null ? null : Math.abs(momentum) <= 5 ? '→' : momentum > 5 ? '↑' : '↓'
+  const momentumColor = momentum === null ? '' : Math.abs(momentum) <= 5 ? 'text-gray-400' : momentum > 5 ? 'text-emerald-500' : 'text-red-500'
 
   const radius = 40
   const circ = 2 * Math.PI * radius
@@ -158,7 +170,12 @@ export function MonthScoreCard({ current, history }: MonthScoreCardProps) {
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            <span className={`text-2xl font-bold leading-none ${textColor}`}>{score}</span>
+            <div className="flex items-center gap-0.5">
+              <span className={`text-2xl font-bold leading-none ${textColor}`}>{score}</span>
+              {momentumArrow && (
+                <span className={`text-sm font-bold leading-none ${momentumColor}`}>{momentumArrow}</span>
+              )}
+            </div>
             <span className="text-[10px] text-gray-400 mt-0.5">score</span>
           </div>
           {/* Hover tooltip */}
@@ -191,8 +208,13 @@ export function MonthScoreCard({ current, history }: MonthScoreCardProps) {
 
         {/* Factor lines */}
         <div className="flex-1 min-w-0">
-          <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2">
-            {monthLabel(current.year, current.month)} · Score del mes
+          <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-2">
+            <span>{monthLabel(current.year, current.month)} · Score del mes</span>
+            {momentum !== null && Math.abs(momentum) > 5 && (
+              <span className={`font-semibold ${momentumColor}`}>
+                {momentum > 0 ? '+' : ''}{momentum} pts vs mes anterior
+              </span>
+            )}
           </div>
           <div className="space-y-1">
             {factors.map(f => (
