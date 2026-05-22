@@ -977,40 +977,44 @@ export default function OverviewPage() {
             </div>
           )}
 
-          {/* Score del mes */}
-          {current && <MonthScoreCard current={current} history={history} />}
-
-          {/* Score history chart */}
-          {allScores.length >= 2 && (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm mb-6 p-5">
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-3">Evolución del score</div>
-              <ResponsiveContainer width="100%" height={160}>
-                <LineChart data={allScores} margin={{ top: 18, right: 12, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                  <XAxis dataKey={d => shortMonthLabel((d as typeof allScores[0]).year, (d as typeof allScores[0]).month)} tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                  <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} width={28} />
-                  <Tooltip
-                    formatter={(v, name) => [v, name as string]}
-                    contentStyle={{ fontSize: 12, borderRadius: 10, border: '1px solid #e5e7eb' }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="score"
-                    stroke="#6366f1"
-                    strokeWidth={2}
-                    dot={(props: { cx?: number; cy?: number; payload?: typeof allScores[0] }) => {
-                      const { cx = 0, cy = 0, payload } = props
-                      if (!payload) return <circle key={`dot-${cx}`} cx={cx} cy={cy} r={0} />
-                      const s = payload.score
-                      const isCur = payload.year === current.year && payload.month === current.month
-                      const fill = s >= 80 ? '#10b981' : s >= 60 ? '#22c55e' : s >= 40 ? '#f59e0b' : '#ef4444'
-                      return <circle key={`dot-${cx}`} cx={cx} cy={cy} r={isCur ? 6 : 3.5} fill={fill} stroke="white" strokeWidth={isCur ? 2 : 1} />
-                    }}
-                  >
-                    <LabelList dataKey="score" position="top" style={{ fontSize: 10, fontWeight: 700, fill: '#374151' }} />
-                  </Line>
-                </LineChart>
-              </ResponsiveContainer>
+          {/* Score del mes + Score history */}
+          {current && (
+            <div className="grid grid-cols-1 md:grid-cols-[2fr_3fr] gap-4 mb-6">
+              <div>
+                <MonthScoreCard current={current} history={history} />
+              </div>
+              {allScores.length >= 2 && (
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                  <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-3">Evolución del score</div>
+                  <ResponsiveContainer width="100%" height={160}>
+                    <LineChart data={allScores} margin={{ top: 18, right: 12, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                      <XAxis dataKey={d => shortMonthLabel((d as typeof allScores[0]).year, (d as typeof allScores[0]).month)} tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                      <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} width={28} />
+                      <Tooltip
+                        formatter={(v, name) => [v, name as string]}
+                        contentStyle={{ fontSize: 12, borderRadius: 10, border: '1px solid #e5e7eb' }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="score"
+                        stroke="#6366f1"
+                        strokeWidth={2}
+                        dot={(props: { cx?: number; cy?: number; payload?: typeof allScores[0] }) => {
+                          const { cx = 0, cy = 0, payload } = props
+                          if (!payload) return <circle key={`dot-${cx}`} cx={cx} cy={cy} r={0} />
+                          const s = payload.score
+                          const isCur = payload.year === current.year && payload.month === current.month
+                          const fill = s >= 80 ? '#10b981' : s >= 60 ? '#22c55e' : s >= 40 ? '#f59e0b' : '#ef4444'
+                          return <circle key={`dot-${cx}`} cx={cx} cy={cy} r={isCur ? 6 : 3.5} fill={fill} stroke="white" strokeWidth={isCur ? 2 : 1} />
+                        }}
+                      >
+                        <LabelList dataKey="score" position="top" style={{ fontSize: 10, fontWeight: 700, fill: '#374151' }} />
+                      </Line>
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
             </div>
           )}
 

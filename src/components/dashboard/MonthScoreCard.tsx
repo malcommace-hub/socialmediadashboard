@@ -143,7 +143,7 @@ export function MonthScoreCard({ current, history }: MonthScoreCardProps) {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm mb-6">
+    <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
       <div className="flex items-center gap-6">
         {/* Circle with hover tooltip */}
         <div className="relative group shrink-0" style={{ width: 100, height: 100 }}>
