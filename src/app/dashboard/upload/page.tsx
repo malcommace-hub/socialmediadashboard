@@ -1,12 +1,12 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { MonthSelector } from '@/components/ui/month-selector'
 import { parseInstagramCSV, parseLinkedInCSV, parseLinkedInXLS, parseLinkedInXLSWithDebug, parseTikTokCSV, parseTikTokOverviewCSV, parseTikTokFollowerHistoryCSV, type LinkedInDebugInfo } from '@/lib/parsers'
-import { upsertInstagramPosts, upsertLinkedInPosts, upsertTikTokVideos, upsertTikTokMonthly } from '@/lib/queries'
+import { upsertInstagramPosts, upsertLinkedInPosts, upsertTikTokVideos, upsertTikTokMonthly, getYouTubeMonthly, upsertYouTubeMonthly } from '@/lib/queries'
 import { clearCache } from '@/lib/queryCache'
 import { currentYearMonth, monthLabel } from '@/lib/utils'
-import { Upload, CheckCircle, AlertCircle, Camera, Briefcase, Music2 } from 'lucide-react'
+import { Upload, CheckCircle, AlertCircle, Camera, Briefcase, Music2, Play } from 'lucide-react'
 
 type Status = 'idle' | 'parsing' | 'preview' | 'uploading' | 'done' | 'error'
 
@@ -55,6 +55,28 @@ export default function UploadPage() {
   const [tt, setTt] = useState<UploadState>(emptyState)
   const [ttOv, setTtOv] = useState<UploadState>(emptyState)
   const [ttFoll, setTtFoll] = useState<UploadState>(emptyState)
+
+  // ─── YouTube Shorts manual ────────────────────
+  const [ytViews, setYtViews] = useState('')
+  const [ytSaving, setYtSaving] = useState(false)
+  const [ytOk, setYtOk] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    getYouTubeMonthly({ year, month }).then(res => {
+      if (!cancelled) setYtViews(String(res.data?.shorts_views ?? ''))
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [year, month])
+
+  async function saveYouTube() {
+    setYtSaving(true)
+    await upsertYouTubeMonthly({ year, month, shorts_views: parseInt(ytViews) || 0 })
+    clearCache()
+    setYtOk(true)
+    setTimeout(() => setYtOk(false), 2000)
+    setYtSaving(false)
+  }
 
   // ─── Instagram ───────────────────────────────
   async function handleInstagramFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -332,12 +354,43 @@ export default function UploadPage() {
         />
       </div>
 
-      {/* Quick links */}
-      <div className="mt-8 p-4 bg-gray-50 rounded-xl border border-gray-200">
-        <div className="text-sm font-medium text-gray-700 mb-2">Datos manuales</div>
-        <p className="text-sm text-gray-500">
-          Para seguidores, YouTube Shorts, Newsletter y datos de Web/UTM, usá las secciones específicas de cada canal en el menú lateral.
-        </p>
+      {/* YouTube Shorts manual entry */}
+      <div className="presentation-hide">
+        <div className="flex items-center gap-2 mt-8 mb-4">
+          <div className="text-xs font-bold tracking-widest text-gray-400 uppercase">Datos manuales</div>
+          <div className="flex-1 h-px bg-gray-100" />
+        </div>
+
+        <Card>
+          <div className="flex items-start gap-3 mb-4">
+            <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center text-red-500 shrink-0">
+              <Play size={18} />
+            </div>
+            <div>
+              <div className="font-semibold text-gray-900">YouTube Shorts</div>
+              <div className="text-xs text-gray-400">Views mensuales de Shorts en YouTube Studio</div>
+            </div>
+          </div>
+          <div className="flex gap-3 items-end">
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Views del mes</label>
+              <input
+                type="number"
+                value={ytViews}
+                onChange={e => setYtViews(e.target.value)}
+                placeholder="0"
+                className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-red-400"
+              />
+            </div>
+            <button
+              onClick={saveYouTube}
+              disabled={ytSaving}
+              className="bg-red-500 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-red-400 disabled:opacity-50"
+            >
+              {ytSaving ? 'Guardando...' : ytOk ? '✓ Guardado' : 'Guardar'}
+            </button>
+          </div>
+        </Card>
       </div>
     </div>
   )

@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
   getTikTokStats, getTikTokHistory, deleteTikTokVideo, upsertTikTokMonthly,
-  addTikTokVideoManual, getYouTubeMonthly, upsertYouTubeMonthly, getYouTubeHistory,
+  addTikTokVideoManual, getYouTubeHistory,
 } from '@/lib/queries'
 import { formatNumber, monthLabel, shortMonthLabel, movingAvg, pctChange, formatPercent } from '@/lib/utils'
 import { useMesParam } from '@/hooks/useMesParam'
@@ -45,8 +45,6 @@ export default function TikTokPage() {
   const [stats, setStats] = useState<TikTokStats | null>(null)
   const [history, setHistory] = useState<HistoryPoint[]>([])
   const [ytHistory, setYtHistory] = useState<YTHistoryPoint[]>([])
-  const [ytViews, setYtViews] = useState('')
-  const [ytSaved, setYtSaved] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [sortKey, setSortKey] = useState<SortKey>('views')
@@ -60,16 +58,14 @@ export default function TikTokPage() {
     setLoading(true)
     setError(null)
     try {
-      const [data, hist, ytHist, ytMonthly] = await Promise.all([
+      const [data, hist, ytHist] = await Promise.all([
         getTikTokStats({ year, month }),
         getTikTokHistory(),
         getYouTubeHistory(),
-        getYouTubeMonthly({ year, month }),
       ])
       setStats(data)
       setHistory(hist)
       setYtHistory(ytHist)
-      setYtViews(String(ytMonthly.data?.shorts_views ?? ''))
     } catch (err) {
       setError((err as { message?: string })?.message ?? 'Error al cargar datos de TikTok')
     } finally {
@@ -79,15 +75,6 @@ export default function TikTokPage() {
 
   useEffect(() => { load() }, [load])
   useEffect(() => { setSelected(new Set()) }, [year, month])
-
-  async function saveYouTube() {
-    setSaving(true)
-    await upsertYouTubeMonthly({ year, month, shorts_views: parseInt(ytViews) || 0 })
-    await load()
-    setYtSaved(true)
-    setTimeout(() => setYtSaved(false), 2000)
-    setSaving(false)
-  }
 
   async function saveVideo() {
     if (!newVideo.title && !newVideo.permalink) return
@@ -574,19 +561,6 @@ export default function TikTokPage() {
                   <span className="ml-1">vs mes ant.</span>
                 </span>
               </div>
-            </div>
-
-            <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm lg:col-span-2 flex items-end gap-3">
-              <div className="flex-1">
-                <div className="text-xs font-medium text-gray-500 mb-1">Actualizar views del mes</div>
-                <input type="number" value={ytViews} onChange={e => setYtViews(e.target.value)}
-                  placeholder="0"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-red-400" />
-              </div>
-              <button onClick={saveYouTube} disabled={saving}
-                className="bg-red-500 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-red-400 disabled:opacity-50 shrink-0">
-                {saving ? '...' : ytSaved ? '✓' : 'Guardar'}
-              </button>
             </div>
           </div>
 
