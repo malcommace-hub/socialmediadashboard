@@ -1,17 +1,17 @@
 'use client'
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, Fragment } from 'react'
 import { MonthSelector } from '@/components/ui/month-selector'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
   getInstagramStats, getInstagramHistory, deleteInstagramPost,
   upsertInstagramMonthly, addInstagramPostManual, getInstagramCollabComparison,
-  getInstagramPostsByCollab,
+  getInstagramPostsByCollab, addFeaturedContent, getFeaturedContent, deleteFeaturedContent,
 } from '@/lib/queries'
 import { formatNumber, formatPercent, monthLabel, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
 import { useMesParam } from '@/hooks/useMesParam'
 import type { InstagramStats, InstagramPost } from '@/lib/types'
-import { Trash2, ExternalLink, Plus, ChevronUp, ChevronDown, PencilLine, Upload, RefreshCw } from 'lucide-react'
+import { Trash2, ExternalLink, Plus, ChevronUp, ChevronDown, PencilLine, Upload, RefreshCw, Star } from 'lucide-react'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LabelList, AreaChart, Area,
@@ -114,6 +114,10 @@ export default function InstagramPage() {
   const [collabPostsMap, setCollabPostsMap] = useState<Record<string, InstagramPost[]>>({})
   const [loadingCollab, setLoadingCollab] = useState<string | null>(null)
   const [compareMode, setCompareMode] = useState(false)
+  const [featuredItems, setFeaturedItems] = useState<Array<{ id: string; post_url: string | null }>>([])
+  const [featuredFormPostId, setFeaturedFormPostId] = useState<string | null>(null)
+  const [featuredNote, setFeaturedNote] = useState('')
+  const [savingFeatured, setSavingFeatured] = useState(false)
   const [prevStats, setPrevStats] = useState<InstagramStats | null>(null)
   const [loadingCompare, setLoadingCompare] = useState(false)
 
@@ -123,6 +127,12 @@ export default function InstagramPage() {
       setCollabWithout(withoutAccount)
     }).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    getFeaturedContent(year, month)
+      .then(items => setFeaturedItems(items.map(i => ({ id: i.id, post_url: i.post_url }))))
+      .catch(() => {})
+  }, [year, month])
 
   useEffect(() => {
     const check = () => setPresentationMode(document.body.classList.contains('presentation-mode'))
@@ -522,6 +532,35 @@ export default function InstagramPage() {
   }, [collabComparison])
 
   const chartCardCls = 'bg-white rounded-2xl border border-gray-100 p-4 shadow-sm'
+
+  function isFeaturedId(post: InstagramPost): string | null {
+    if (!post.permalink || post.permalink.startsWith('manual:')) return null
+    return featuredItems.find(f => f.post_url === post.permalink)?.id ?? null
+  }
+
+  async function handleUnfeature(featuredId: string) {
+    await deleteFeaturedContent(featuredId)
+    setFeaturedItems(items => items.filter(i => i.id !== featuredId))
+  }
+
+  async function handleSaveFeature(post: InstagramPost) {
+    if (!featuredNote.trim()) return
+    setSavingFeatured(true)
+    const er = erForPost(post)
+    const { data } = await addFeaturedContent({
+      year, month,
+      channel: 'instagram',
+      post_url: post.permalink || null,
+      description: post.description || null,
+      views: post.views || null,
+      er_pct: er > 0 ? +er.toFixed(2) : null,
+      editorial_note: featuredNote.trim(),
+    })
+    if (data) setFeaturedItems(items => [...items, { id: data.id, post_url: data.post_url }])
+    setFeaturedFormPostId(null)
+    setFeaturedNote('')
+    setSavingFeatured(false)
+  }
 
   return (
     <div className="p-8 max-w-7xl mx-auto">
@@ -1180,18 +1219,21 @@ export default function InstagramPage() {
                     </th>
                     <th className="ph-col text-right py-2 px-2 text-xs font-medium text-gray-400">Link</th>
                     <th className="ph-col py-2 px-2 w-8" />
+                    <th className="ph-col py-2 px-2 w-8" />
                   </tr>
                 </thead>
                 <tbody>
                   {sorted.length === 0 && (
-                    <tr><td colSpan={10} className="py-8 text-center text-gray-400 text-sm">
+                    <tr><td colSpan={11} className="py-8 text-center text-gray-400 text-sm">
                       No hay posts. Subí un CSV o agregá uno manual.
                     </td></tr>
                   )}
                   {sorted.map((post, idx) => {
                     if (presentationMode && idx >= 8) return null
+                    const fid = isFeaturedId(post)
                     return (
-                    <tr key={post.id} className="border-b border-gray-50 hover:bg-gray-50 group">
+                    <Fragment key={post.id}>
+                    <tr className="border-b border-gray-50 hover:bg-gray-50 group">
                       <td className="ph-col py-2 px-2">
                         <input type="checkbox" className="rounded" checked={selected.has(post.id)} onChange={() => toggleSelect(post.id)} />
                       </td>
@@ -1228,16 +1270,49 @@ export default function InstagramPage() {
                           : '—'}
                       </td>
                       <td className="ph-col py-2 px-2 text-right">
+                        {fid
+                          ? <button onClick={() => handleUnfeature(fid)} className="text-amber-400 hover:text-gray-300 transition-colors" title="Quitar de destacados"><Star size={14} fill="currentColor" /></button>
+                          : <button onClick={() => { setFeaturedFormPostId(featuredFormPostId === post.id ? null : post.id); setFeaturedNote('') }} className="text-gray-200 hover:text-amber-400 group-hover:text-gray-400 transition-colors" title="Destacar este post"><Star size={14} /></button>
+                        }
+                      </td>
+                      <td className="ph-col py-2 px-2 text-right">
                         <button onClick={() => handleDelete(post.id)}
                           className="text-gray-200 hover:text-red-500 group-hover:text-gray-400 transition-colors">
                           <Trash2 size={14} />
                         </button>
                       </td>
                     </tr>
+                    {featuredFormPostId === post.id && (
+                      <tr>
+                        <td colSpan={11} className="px-3 pb-3 pt-1.5 bg-amber-50 border-b border-amber-100">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-medium text-amber-700 whitespace-nowrap">Nota editorial</span>
+                            <input
+                              type="text"
+                              placeholder="¿Por qué destacar este contenido?"
+                              value={featuredNote}
+                              onChange={e => setFeaturedNote(e.target.value)}
+                              onKeyDown={e => e.key === 'Enter' && handleSaveFeature(post)}
+                              className="flex-1 border border-amber-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-amber-400"
+                              autoFocus
+                            />
+                            <button
+                              onClick={() => handleSaveFeature(post)}
+                              disabled={!featuredNote.trim() || savingFeatured}
+                              className="text-xs bg-amber-500 text-white px-3 py-1 rounded-lg font-medium hover:bg-amber-400 disabled:opacity-50 whitespace-nowrap"
+                            >
+                              {savingFeatured ? '...' : 'Destacar'}
+                            </button>
+                            <button onClick={() => { setFeaturedFormPostId(null); setFeaturedNote('') }} className="text-xs text-gray-500 hover:text-gray-700">Cancelar</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   )})}
                   {presentationMode && sorted.length > 8 && (
                     <tr>
-                      <td colSpan={10} className="py-2 px-2 text-xs text-gray-400 text-center">
+                      <td colSpan={11} className="py-2 px-2 text-xs text-gray-400 text-center">
                         y {sorted.length - 8} más...
                       </td>
                     </tr>
