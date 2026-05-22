@@ -7,6 +7,7 @@ import {
   getInstagramStats, getInstagramHistory, deleteInstagramPost,
   upsertInstagramMonthly, addInstagramPostManual, getInstagramCollabComparison,
   getInstagramPostsByCollab, addFeaturedContent, getFeaturedContent, deleteFeaturedContent,
+  getInstagramErByTypeHistory,
 } from '@/lib/queries'
 import { formatNumber, formatPercent, monthLabel, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
 import { useMesParam } from '@/hooks/useMesParam'
@@ -16,6 +17,7 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LabelList, AreaChart, Area,
   ScatterChart, Scatter, ZAxis, ReferenceLine,
+  LineChart, BarChart,
 } from 'recharts'
 import Link from 'next/link'
 import { SkeletonCard } from '@/components/dashboard/SkeletonCard'
@@ -120,12 +122,18 @@ export default function InstagramPage() {
   const [savingFeatured, setSavingFeatured] = useState(false)
   const [prevStats, setPrevStats] = useState<InstagramStats | null>(null)
   const [loadingCompare, setLoadingCompare] = useState(false)
+  const [erTypeHistory, setErTypeHistory] = useState<Awaited<ReturnType<typeof getInstagramErByTypeHistory>>>([])
+  const [distOpen, setDistOpen] = useState(false)
 
   useEffect(() => {
     getInstagramCollabComparison().then(({ comparison, withoutAccount }) => {
       setCollabComparison(comparison)
       setCollabWithout(withoutAccount)
     }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    getInstagramErByTypeHistory().then(setErTypeHistory).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -531,6 +539,55 @@ export default function InstagramPage() {
     return result
   }, [collabComparison])
 
+  const erByTypeChart = useMemo(() => {
+    if (!erTypeHistory.length) return null
+    const types = ['Reel', 'Post', 'Collab']
+    const monthKeys = [...new Set(erTypeHistory.map(r => `${r.year}-${r.month}`))].sort()
+    if (monthKeys.length < 3) return null
+    const validTypes = types.filter(t => erTypeHistory.filter(r => r.type === t).length >= 3)
+    if (validTypes.length < 1) return null
+    const rows = monthKeys.map(k => {
+      const [yr, mo] = k.split('-').map(Number)
+      const entry: Record<string, string | number | null> = { label: shortMonthLabel(yr, mo) }
+      for (const t of validTypes) {
+        const found = erTypeHistory.find(r => r.year === yr && r.month === mo && r.type === t)
+        entry[t] = found ? found.avgEr : null
+        entry[`${t}_count`] = found ? found.postCount : null
+      }
+      return entry
+    })
+    return { rows, validTypes }
+  }, [erTypeHistory])
+
+  const viewsDist = useMemo(() => {
+    const ranges = [
+      { label: '0–1k',     lo: 0,      hi: 1000 },
+      { label: '1k–5k',    lo: 1000,   hi: 5000 },
+      { label: '5k–15k',   lo: 5000,   hi: 15000 },
+      { label: '15k–50k',  lo: 15000,  hi: 50000 },
+      { label: '50k–150k', lo: 50000,  hi: 150000 },
+      { label: '150k+',    lo: 150000, hi: Infinity },
+    ]
+    const nonCollab = regularPosts.filter(p => p.type !== 'Story')
+    if (nonCollab.length < 3) return null
+    const buckets = ranges.map(r => ({
+      label: r.label,
+      count: nonCollab.filter(p => p.views >= r.lo && p.views < r.hi).length,
+    })).filter(b => b.count > 0)
+    if (buckets.length < 2) return null
+
+    const totalViews = nonCollab.reduce((a, p) => a + p.views, 0)
+    const topPost = [...nonCollab].sort((a, b) => b.views - a.views)[0]
+    const topShare = totalViews > 0 && topPost ? topPost.views / totalViews : 0
+    const insight = topShare > 0.5
+      ? `El alcance está concentrado en 1 post — el mes depende de un solo contenido`
+      : topShare < 0.3
+      ? `Alcance bien distribuido entre los posts del mes`
+      : null
+
+    return { buckets, insight }
+  }, [regularPosts])
+
   const chartCardCls = 'bg-white rounded-2xl border border-gray-100 p-4 shadow-sm'
 
   function isFeaturedId(post: InstagramPost): string | null {
@@ -812,6 +869,46 @@ export default function InstagramPage() {
                   </ResponsiveContainer>
                 </div>
               ))}
+            </div>
+          )}
+
+          {erByTypeChart && (
+            <div className={chartCardCls + ' mb-4'}>
+              <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">
+                Tendencia de engagement por tipo
+              </div>
+              <ResponsiveContainer width="100%" height={200}>
+                <LineChart data={erByTypeChart.rows} margin={{ top: 16, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => `${v}%`} axisLine={false} tickLine={false} width={36} />
+                  <Tooltip
+                    content={({ active, payload, label }) => {
+                      if (!active || !payload?.length) return null
+                      return (
+                        <div className="bg-white border border-gray-200 rounded-xl p-2 text-xs shadow-lg">
+                          <div className="font-medium text-gray-700 mb-1">{label}</div>
+                          {payload.map(p => p.value != null && (
+                            <div key={p.dataKey as string} style={{ color: p.color }} className="flex justify-between gap-3">
+                              <span>{p.name}</span>
+                              <span className="font-semibold">{Number(p.value).toFixed(2)}%</span>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    }}
+                  />
+                  {erByTypeChart.validTypes.includes('Reel') && (
+                    <Line type="monotone" dataKey="Reel" name="Reel" stroke="#ec4899" strokeWidth={2} dot={{ r: 3, fill: '#ec4899', strokeWidth: 0 }} connectNulls />
+                  )}
+                  {erByTypeChart.validTypes.includes('Post') && (
+                    <Line type="monotone" dataKey="Post" name="Post" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3, fill: '#3b82f6', strokeWidth: 0 }} connectNulls />
+                  )}
+                  {erByTypeChart.validTypes.includes('Collab') && (
+                    <Line type="monotone" dataKey="Collab" name="Collab" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 3, fill: '#8b5cf6', strokeWidth: 0 }} connectNulls />
+                  )}
+                </LineChart>
+              </ResponsiveContainer>
             </div>
           )}
 

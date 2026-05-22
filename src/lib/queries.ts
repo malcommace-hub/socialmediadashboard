@@ -729,3 +729,29 @@ export async function getPostByUrl(url: string) {
   }
   return null
 }
+
+export async function getInstagramErByTypeHistory() {
+  type Item = { year: number; month: number; type: string; avgEr: number; postCount: number }
+  const hit = getCached<Item[]>('ig-er-type-history'); if (hit) return hit
+  const { data } = await supabase
+    .from('instagram_posts')
+    .select('year, month, type, impressions, likes, comments, shares, saves')
+    .gt('impressions', 0)
+    .order('year')
+    .order('month')
+  const rows = data ?? []
+  const grouped: Record<string, { year: number; month: number; type: string; totalInt: number; totalImp: number; count: number }> = {}
+  for (const r of rows) {
+    const k = `${r.year}-${r.month}-${r.type}`
+    if (!grouped[k]) grouped[k] = { year: r.year, month: r.month, type: r.type as string, totalInt: 0, totalImp: 0, count: 0 }
+    grouped[k].totalInt += (r.likes ?? 0) + (r.comments ?? 0) + (r.shares ?? 0) + (r.saves ?? 0)
+    grouped[k].totalImp += r.impressions ?? 0
+    grouped[k].count++
+  }
+  const result: Item[] = Object.values(grouped)
+    .filter(g => g.totalImp > 0)
+    .map(g => ({ year: g.year, month: g.month, type: g.type, avgEr: +(g.totalInt / g.totalImp * 100).toFixed(2), postCount: g.count }))
+    .sort((a, b) => a.year - b.year || a.month - b.month)
+  setCached('ig-er-type-history', result)
+  return result
+}
