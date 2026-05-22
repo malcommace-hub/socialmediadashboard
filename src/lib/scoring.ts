@@ -12,3 +12,9 @@ export function ratioToScore(ratio: number): number {
     return Math.max(5, Math.round(50 * Math.pow(ratio, 0.84)))
   }
 }
+
+export function blendedScore(ratio: number): number {
+  if (ratio >= 1.12) return ratioToScore(ratio)
+  if (ratio >= 0.88) return 68
+  return ratioToScore(ratio)
+}

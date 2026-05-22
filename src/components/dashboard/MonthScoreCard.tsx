@@ -2,7 +2,7 @@
 import { useMemo } from 'react'
 import { getOverviewHistory } from '@/lib/queries'
 import { formatNumber, monthLabel } from '@/lib/utils'
-import { ratioToScore } from '@/lib/scoring'
+import { ratioToScore, blendedScore } from '@/lib/scoring'
 
 type HP = Awaited<ReturnType<typeof getOverviewHistory>>[0]
 
@@ -13,11 +13,6 @@ interface MonthScoreCardProps {
 
 function clamp(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, v))
-}
-
-function dimSubScore(current: number, avg: number): number {
-  if (avg <= 0) return 55  // elevated neutral: no usable history to compare against
-  return ratioToScore(current / avg)
 }
 
 function prior3Avg(history: HP[], current: HP, getValue: (h: HP) => number): number | null {
@@ -34,80 +29,87 @@ function engVal(h: HP): number {
   return vals.length ? vals.reduce((a, b) => a + b) / vals.length : 0
 }
 
+function priorFullAvg(history: HP[], current: HP, getValue: (h: HP) => number): number | null {
+  const idx = history.findIndex(h => h.year === current.year && h.month === current.month)
+  if (idx <= 0) return null
+  const slice = history.slice(0, idx)
+  const vals = slice.map(getValue).filter(v => v > 0)
+  if (!vals.length) return null
+  return vals.reduce((a, b) => a + b, 0) / vals.length
+}
+
+function blendedDimScore(actual: number, avg3: number | null, avgFull: number | null): number {
+  const scoreA = avgFull != null && avgFull > 0 ? ratioToScore(actual / avgFull) : 55
+  const scoreB = avg3 != null && avg3 > 0 ? blendedScore(actual / avg3) : 55
+  if (avg3 == null && avgFull == null) return 55
+  if (avg3 == null) return scoreA
+  if (avgFull == null) return scoreB
+  return Math.round(0.4 * scoreA + 0.6 * scoreB)
+}
+
 type Factor = { label: string; pct: number | null }
 type Dim = { label: string; weight: number; score: number | null; curr: number | null; avg: number | null; pct: boolean }
 type ScoreResult = { score: number; isOnlyMonth: boolean; factors: Factor[]; dims: Dim[]; histMonths: number }
 
-export function calculateMonthScore(current: HP, history: HP[]): ScoreResult {
+export function calculateMonthScore(current: HP, history: HP[], fullHistory?: HP[]): ScoreResult {
+  const fh = fullHistory ?? history
+
   const reach = current.igImpressions + current.liImpressions + current.ttViews
   const engagement = engVal(current)
   const followers = current.igNewFollowers + current.liNewFollowers + current.ttNewFollowers
   const nl = current.newsletterViews
   const posts = (current.igPostCount ?? 0) + (current.liPostCount ?? 0)
 
-  const avgReach = prior3Avg(history, current, h => h.igImpressions + h.liImpressions + h.ttViews)
-  const avgEng = prior3Avg(history, current, engVal)
-  const avgFoll = prior3Avg(history, current, h => h.igNewFollowers + h.liNewFollowers + h.ttNewFollowers)
-  const avgNl = prior3Avg(history, current, h => h.newsletterViews)
-  const avgPosts = prior3Avg(history, current, h => (h.igPostCount ?? 0) + (h.liPostCount ?? 0))
+  const avg3Reach = prior3Avg(history, current, h => h.igImpressions + h.liImpressions + h.ttViews)
+  const avg3Eng   = prior3Avg(history, current, engVal)
+  const avg3Foll  = prior3Avg(history, current, h => h.igNewFollowers + h.liNewFollowers + h.ttNewFollowers)
+  const avg3Nl    = prior3Avg(history, current, h => h.newsletterViews)
+  const avg3Posts = prior3Avg(history, current, h => (h.igPostCount ?? 0) + (h.liPostCount ?? 0))
 
-  const nlActive = nl > 0 || (avgNl !== null && avgNl > 0)
+  const avgFReach = priorFullAvg(fh, current, h => h.igImpressions + h.liImpressions + h.ttViews)
+  const avgFEng   = priorFullAvg(fh, current, engVal)
+  const avgFFoll  = priorFullAvg(fh, current, h => h.igNewFollowers + h.liNewFollowers + h.ttNewFollowers)
+  const avgFNl    = priorFullAvg(fh, current, h => h.newsletterViews)
+  const avgFPosts = priorFullAvg(fh, current, h => (h.igPostCount ?? 0) + (h.liPostCount ?? 0))
 
-  const wReach = nlActive ? 0.25 : 0.325
-  const wEng = nlActive ? 0.20 : 0.275
-  const wFoll = 0.20
-  const wNl = nlActive ? 0.15 : 0
+  const nlActive = nl > 0 || (avg3Nl !== null && avg3Nl > 0)
+
+  const wReach = nlActive ? 0.30 : 0.40
+  const wEng   = nlActive ? 0.20 : 0.30
+  const wFoll  = 0.20
+  const wNl    = nlActive ? 0.20 : 0
   const wPosts = 0.10
-  const wTend = 0.10
 
-  const sReach = dimSubScore(reach, avgReach ?? 0)
-  const sEng = dimSubScore(engagement, avgEng ?? 0)
-  const sFoll = dimSubScore(followers, avgFoll ?? 0)
-  const sNl = nlActive ? dimSubScore(nl, avgNl ?? 0) : 55
-  const sPosts = dimSubScore(posts, avgPosts ?? 0)
+  const sReach = blendedDimScore(reach,      avg3Reach, avgFReach)
+  const sEng   = blendedDimScore(engagement, avg3Eng,   avgFEng)
+  const sFoll  = blendedDimScore(followers,  avg3Foll,  avgFFoll)
+  const sNl    = nlActive ? blendedDimScore(nl, avg3Nl, avgFNl) : 55
+  const sPosts = blendedDimScore(posts,      avg3Posts, avgFPosts)
 
-  const tendencyChecks = [
-    avgReach !== null ? reach >= avgReach : null,
-    avgEng !== null ? engagement >= avgEng : null,
-    avgFoll !== null ? followers >= avgFoll : null,
-    nlActive && avgNl !== null ? nl >= avgNl : null,
-    avgPosts !== null ? posts >= avgPosts : null,
-  ].filter((v): v is boolean => v !== null)
-  const beating = tendencyChecks.filter(Boolean).length
-  const sTend = tendencyChecks.length === 0 ? 55
-    : beating === tendencyChecks.length ? 95
-    : beating >= 3 ? 75
-    : beating === 2 ? 55
-    : beating === 1 ? 30
-    : 10
-
-  const raw =
-    sReach * wReach + sEng * wEng + sFoll * wFoll +
-    (nlActive ? sNl * wNl : 0) + sPosts * wPosts + sTend * wTend
-  const score = isNaN(raw) ? 0 : Math.round(raw)
+  const raw = sReach * wReach + sEng * wEng + sFoll * wFoll + (nlActive ? sNl * wNl : 0) + sPosts * wPosts
+  const score = isNaN(raw) ? 0 : clamp(Math.round(raw), 0, 100)
   const isOnlyMonth = history.length <= 1
 
   const factors: Factor[] = []
-  if (avgReach !== null) factors.push({ label: 'Alcance total', pct: avgReach > 0 ? (reach - avgReach) / avgReach * 100 : null })
-  if (avgEng !== null) factors.push({ label: 'Engagement', pct: avgEng > 0 ? (engagement - avgEng) / avgEng * 100 : null })
-  if (avgFoll !== null) factors.push({ label: 'Nuevos seguidores', pct: avgFoll > 0 ? (followers - avgFoll) / avgFoll * 100 : null })
-  if (nlActive && avgNl !== null) factors.push({ label: 'Newsletter', pct: avgNl > 0 ? (nl - avgNl) / avgNl * 100 : null })
-  if (avgPosts !== null) factors.push({ label: 'Contenido', pct: avgPosts > 0 ? (posts - avgPosts) / avgPosts * 100 : null })
+  if (avg3Reach !== null) factors.push({ label: 'Alcance total', pct: avg3Reach > 0 ? (reach - avg3Reach) / avg3Reach * 100 : null })
+  if (avg3Eng !== null)   factors.push({ label: 'Engagement',    pct: avg3Eng > 0   ? (engagement - avg3Eng) / avg3Eng * 100     : null })
+  if (avg3Foll !== null)  factors.push({ label: 'Nuevos seguidores', pct: avg3Foll > 0 ? (followers - avg3Foll) / avg3Foll * 100 : null })
+  if (nlActive && avg3Nl !== null) factors.push({ label: 'Newsletter', pct: avg3Nl > 0 ? (nl - avg3Nl) / avg3Nl * 100 : null })
+  if (avg3Posts !== null) factors.push({ label: 'Contenido',     pct: avg3Posts > 0 ? (posts - avg3Posts) / avg3Posts * 100      : null })
   if (!nlActive) factors.push({ label: 'Newsletter', pct: null })
   factors.sort((a, b) => (b.pct !== null ? Math.abs(b.pct) : -1) - (a.pct !== null ? Math.abs(a.pct) : -1))
 
   const dims: Dim[] = [
-    { label: 'Alcance total', weight: Math.round(wReach * 100), score: Math.round(sReach), curr: reach, avg: avgReach, pct: false },
-    { label: 'Engagement', weight: Math.round(wEng * 100), score: Math.round(sEng), curr: +engagement.toFixed(2), avg: avgEng !== null ? +avgEng.toFixed(2) : null, pct: true },
-    { label: 'Audiencia', weight: Math.round(wFoll * 100), score: Math.round(sFoll), curr: followers, avg: avgFoll, pct: false },
-    { label: 'Newsletter', weight: Math.round(wNl * 100), score: nlActive ? Math.round(sNl) : null, curr: nl, avg: avgNl, pct: false },
-    { label: 'Contenido', weight: Math.round(wPosts * 100), score: Math.round(sPosts), curr: posts, avg: avgPosts, pct: false },
-    { label: 'Tendencia', weight: Math.round(wTend * 100), score: Math.round(sTend), curr: null, avg: null, pct: false },
+    { label: 'Alcance total', weight: Math.round(wReach * 100), score: Math.round(sReach), curr: reach,              avg: avg3Reach,                                          pct: false },
+    { label: 'Engagement',    weight: Math.round(wEng * 100),   score: Math.round(sEng),   curr: +engagement.toFixed(2), avg: avg3Eng !== null ? +avg3Eng.toFixed(2) : null, pct: true  },
+    { label: 'Audiencia',     weight: Math.round(wFoll * 100),  score: Math.round(sFoll),  curr: followers,           avg: avg3Foll,                                          pct: false },
+    { label: 'Newsletter',    weight: Math.round(wNl * 100),    score: nlActive ? Math.round(sNl) : null, curr: nl,  avg: avg3Nl,                                            pct: false },
+    { label: 'Contenido',     weight: Math.round(wPosts * 100), score: Math.round(sPosts), curr: posts,               avg: avg3Posts,                                         pct: false },
   ]
 
   const idx = history.findIndex(h => h.year === current.year && h.month === current.month)
-  const priorSlice = idx > 0 ? history.slice(Math.max(0, idx - 3), idx) : []
-  const histMonths = priorSlice.filter(h => (h.igImpressions + h.liImpressions + h.ttViews) > 0).length
+  const priorAll = idx > 0 ? history.slice(0, idx) : []
+  const histMonths = priorAll.filter(h => (h.igImpressions + h.liImpressions + h.ttViews) > 0).length
 
   return { score, isOnlyMonth, factors: factors.slice(0, 4), dims, histMonths }
 }
