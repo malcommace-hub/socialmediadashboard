@@ -55,6 +55,28 @@ body.presentation-mode .recharts-label {
   font-size: 13px !important;
 }
 
+/* Impactos del mes — presentation mode enhancements */
+body.presentation-mode .featured-top-card {
+  padding: 1.5rem !important;
+}
+body.presentation-mode .featured-top-card .text-sm {
+  font-size: 1rem !important;
+  line-height: 1.5 !important;
+}
+body.presentation-mode .featured-top-card .text-xs {
+  font-size: 0.8125rem !important;
+}
+body.presentation-mode .featured-editorial-note {
+  font-size: 0.9375rem !important;
+  padding: 1rem 1.25rem !important;
+  border-width: 2px !important;
+  font-style: italic;
+}
+body.presentation-mode .featured-editorial-note .text-xs {
+  font-size: 0.75rem !important;
+  font-style: normal;
+}
+
 /* Print styles — activated by Imprimir resumen button (window.print()) */
 @media print {
   /* Hide navigation, controls and interactive elements */
