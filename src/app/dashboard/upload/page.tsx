@@ -3,10 +3,16 @@ import { useState, useEffect } from 'react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { MonthSelector } from '@/components/ui/month-selector'
 import { parseInstagramCSV, parseLinkedInCSV, parseLinkedInXLS, parseLinkedInXLSWithDebug, parseTikTokCSV, parseTikTokOverviewCSV, parseTikTokFollowerHistoryCSV, type LinkedInDebugInfo } from '@/lib/parsers'
-import { upsertInstagramPosts, upsertLinkedInPosts, upsertTikTokVideos, upsertTikTokMonthly, getYouTubeMonthly, upsertYouTubeMonthly } from '@/lib/queries'
+import {
+  upsertInstagramPosts, upsertLinkedInPosts, upsertTikTokVideos, upsertTikTokMonthly,
+  getYouTubeMonthly, upsertYouTubeMonthly,
+  getNewsletterData, upsertNewsletterMonthly, addNewsletterEpisode, deleteNewsletterEpisode,
+  getWebData, upsertWebMonthly, upsertWebUtmSource,
+} from '@/lib/queries'
+import type { NewsletterEpisode } from '@/lib/types'
 import { clearCache } from '@/lib/queryCache'
 import { currentYearMonth, monthLabel } from '@/lib/utils'
-import { Upload, CheckCircle, AlertCircle, Camera, Briefcase, Music2, Play } from 'lucide-react'
+import { Upload, CheckCircle, AlertCircle, Camera, Briefcase, Music2, Play, Mail, Globe, Plus, Trash2 } from 'lucide-react'
 
 type Status = 'idle' | 'parsing' | 'preview' | 'uploading' | 'done' | 'error'
 
@@ -61,12 +67,45 @@ export default function UploadPage() {
   const [ytSaving, setYtSaving] = useState(false)
   const [ytOk, setYtOk] = useState(false)
 
+  // ─── Newsletter manual ────────────────────────
+  const [nlNewSubs, setNlNewSubs] = useState('')
+  const [nlSaving, setNlSaving] = useState(false)
+  const [nlOk, setNlOk] = useState(false)
+  const [nlEpisodes, setNlEpisodes] = useState<NewsletterEpisode[]>([])
+  const [nlShowForm, setNlShowForm] = useState(false)
+  const [nlNewEp, setNlNewEp] = useState({ episode_number: '', title: '', views: '', lead_magnet_downloads: '', published_date: '', url: '' })
+
+  // ─── Web / UTM manual ─────────────────────────
+  const UTM_SOURCES = ['instagram', 'linkedin', 'tiktok', 'linktree', 'other']
+  const UTM_COLORS: Record<string, string> = {
+    instagram: '#f43f5e', linkedin: '#3b82f6', tiktok: '#374151', linktree: '#10b981', other: '#d1d5db',
+  }
+  const [webTotalSessions, setWebTotalSessions] = useState('')
+  const [webUtmValues, setWebUtmValues] = useState<Record<string, string>>({})
+  const [webSaving, setWebSaving] = useState(false)
+  const [webOk, setWebOk] = useState(false)
+
   useEffect(() => {
     let cancelled = false
-    getYouTubeMonthly({ year, month }).then(res => {
-      if (!cancelled) setYtViews(String(res.data?.shorts_views ?? ''))
+    Promise.all([
+      getYouTubeMonthly({ year, month }),
+      getNewsletterData({ year, month }),
+      getWebData({ year, month }),
+    ]).then(([ytRes, nlData, webData]) => {
+      if (cancelled) return
+      setYtViews(String(ytRes.data?.shorts_views ?? ''))
+      setNlNewSubs(String(nlData.monthly?.new_subscribers ?? ''))
+      setNlEpisodes(nlData.episodes)
+      setWebTotalSessions(String(webData.monthly?.total_sessions ?? ''))
+      const vals: Record<string, string> = {}
+      UTM_SOURCES.forEach(s => {
+        const found = webData.utmSources.find((u: { source: string }) => u.source === s)
+        vals[s] = String(found?.sessions ?? '')
+      })
+      setWebUtmValues(vals)
     }).catch(() => {})
     return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year, month])
 
   async function saveYouTube() {
@@ -76,6 +115,54 @@ export default function UploadPage() {
     setYtOk(true)
     setTimeout(() => setYtOk(false), 2000)
     setYtSaving(false)
+  }
+
+  async function saveNewsletter() {
+    setNlSaving(true)
+    await upsertNewsletterMonthly({ year, month, new_subscribers: parseInt(nlNewSubs) || 0 })
+    clearCache()
+    setNlOk(true)
+    setTimeout(() => setNlOk(false), 2000)
+    setNlSaving(false)
+  }
+
+  async function saveEpisode() {
+    if (!nlNewEp.title) return
+    setNlSaving(true)
+    await addNewsletterEpisode({
+      year, month,
+      episode_number: parseInt(nlNewEp.episode_number) || null,
+      title: nlNewEp.title,
+      views: parseInt(nlNewEp.views) || 0,
+      lead_magnet_downloads: parseInt(nlNewEp.lead_magnet_downloads) || 0,
+      published_date: nlNewEp.published_date || null,
+      url: nlNewEp.url || null,
+    })
+    setNlNewEp({ episode_number: '', title: '', views: '', lead_magnet_downloads: '', published_date: '', url: '' })
+    setNlShowForm(false)
+    const nlData = await getNewsletterData({ year, month })
+    setNlEpisodes(nlData.episodes)
+    setNlSaving(false)
+  }
+
+  async function handleDeleteEpisode(id: string) {
+    if (!confirm('¿Eliminar este episodio?')) return
+    await deleteNewsletterEpisode(id)
+    const nlData = await getNewsletterData({ year, month })
+    setNlEpisodes(nlData.episodes)
+    clearCache()
+  }
+
+  async function saveWeb() {
+    setWebSaving(true)
+    await upsertWebMonthly({ year, month, total_sessions: parseInt(webTotalSessions) || 0 })
+    await Promise.all(UTM_SOURCES.map(s =>
+      upsertWebUtmSource({ year, month, source: s, sessions: parseInt(webUtmValues[s] || '0') || 0 })
+    ))
+    clearCache()
+    setWebOk(true)
+    setTimeout(() => setWebOk(false), 2000)
+    setWebSaving(false)
   }
 
   // ─── Instagram ───────────────────────────────
@@ -388,6 +475,168 @@ export default function UploadPage() {
               className="bg-red-500 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-red-400 disabled:opacity-50"
             >
               {ytSaving ? 'Guardando...' : ytOk ? '✓ Guardado' : 'Guardar'}
+            </button>
+          </div>
+        </Card>
+
+        {/* Newsletter */}
+        <Card className="mt-4">
+          <div className="flex items-start gap-3 mb-4">
+            <div className="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center text-orange-500 shrink-0">
+              <Mail size={18} />
+            </div>
+            <div>
+              <div className="font-semibold text-gray-900">Newsletter</div>
+              <div className="text-xs text-gray-400">Nuevos suscriptores y episodios del mes</div>
+            </div>
+          </div>
+
+          <div className="flex gap-3 items-end mb-4">
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Nuevos suscriptores</label>
+              <input
+                type="number"
+                value={nlNewSubs}
+                onChange={e => setNlNewSubs(e.target.value)}
+                className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+            <button
+              onClick={saveNewsletter}
+              disabled={nlSaving}
+              className="bg-emerald-500 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-emerald-400 disabled:opacity-50"
+            >
+              {nlSaving ? 'Guardando...' : nlOk ? '✓ Guardado' : 'Guardar'}
+            </button>
+          </div>
+
+          <div className="border-t border-gray-100 pt-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-medium text-gray-700">Episodios ({nlEpisodes.length})</div>
+              <button
+                onClick={() => setNlShowForm(v => !v)}
+                className="flex items-center gap-1 text-xs bg-emerald-500 text-white px-3 py-1 rounded-lg font-medium hover:bg-emerald-400"
+              >
+                <Plus size={13} /> Agregar episodio
+              </button>
+            </div>
+
+            {nlShowForm && (
+              <div className="bg-gray-50 rounded-xl p-4 mb-4 border border-gray-200">
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Episodio #</label>
+                    <input type="number" value={nlNewEp.episode_number} onChange={e => setNlNewEp(v => ({ ...v, episode_number: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="text-xs text-gray-500 block mb-1">Título *</label>
+                    <input type="text" value={nlNewEp.title} onChange={e => setNlNewEp(v => ({ ...v, title: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Views</label>
+                    <input type="number" value={nlNewEp.views} onChange={e => setNlNewEp(v => ({ ...v, views: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Lead magnet downloads</label>
+                    <input type="number" value={nlNewEp.lead_magnet_downloads} onChange={e => setNlNewEp(v => ({ ...v, lead_magnet_downloads: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 block mb-1">Fecha de publicación</label>
+                    <input type="date" value={nlNewEp.published_date} onChange={e => setNlNewEp(v => ({ ...v, published_date: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  </div>
+                  <div className="col-span-3">
+                    <label className="text-xs text-gray-500 block mb-1">URL del artículo</label>
+                    <input type="url" value={nlNewEp.url} onChange={e => setNlNewEp(v => ({ ...v, url: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-3">
+                  <button onClick={saveEpisode} disabled={nlSaving}
+                    className="bg-emerald-500 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-emerald-400 disabled:opacity-50">
+                    {nlSaving ? 'Guardando...' : 'Guardar episodio'}
+                  </button>
+                  <button onClick={() => setNlShowForm(false)} className="text-sm text-gray-500 px-3 py-1.5 hover:text-gray-700">Cancelar</button>
+                </div>
+              </div>
+            )}
+
+            {nlEpisodes.length > 0 && (
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="text-left py-2 px-2 text-xs font-medium text-gray-400">#</th>
+                    <th className="text-left py-2 px-2 text-xs font-medium text-gray-400">Título</th>
+                    <th className="text-right py-2 px-2 text-xs font-medium text-gray-400">Views</th>
+                    <th className="py-2 px-2 w-8" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {nlEpisodes.map(ep => (
+                    <tr key={ep.id} className="border-b border-gray-50 hover:bg-gray-50 group">
+                      <td className="py-2 px-2 text-gray-400 font-mono text-xs">#{ep.episode_number ?? '—'}</td>
+                      <td className="py-2 px-2 text-gray-700 truncate max-w-xs">{ep.title}</td>
+                      <td className="py-2 px-2 text-right font-medium">{ep.views ?? 0}</td>
+                      <td className="py-2 px-2 text-right">
+                        <button onClick={() => handleDeleteEpisode(ep.id)} className="text-gray-200 hover:text-red-500 group-hover:text-gray-400 transition-colors">
+                          <Trash2 size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </Card>
+
+        {/* Tráfico Web */}
+        <Card className="mt-4">
+          <div className="flex items-start gap-3 mb-4">
+            <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-600 shrink-0">
+              <Globe size={18} />
+            </div>
+            <div>
+              <div className="font-semibold text-gray-900">Tráfico web</div>
+              <div className="text-xs text-gray-400">Sesiones y fuentes UTM del mes — Webflow Analytics</div>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Sesiones totales</label>
+              <input
+                type="number"
+                value={webTotalSessions}
+                onChange={e => setWebTotalSessions(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+            <div className="border-t border-gray-100 pt-3">
+              <div className="text-xs font-medium text-gray-500 mb-2">Sesiones por UTM source</div>
+              {UTM_SOURCES.map(s => (
+                <div key={s} className="flex items-center gap-3 mb-2">
+                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: UTM_COLORS[s] }} />
+                  <label className="text-sm text-gray-600 w-20 capitalize">{s}</label>
+                  <input
+                    type="number"
+                    value={webUtmValues[s] ?? ''}
+                    onChange={e => setWebUtmValues(v => ({ ...v, [s]: e.target.value }))}
+                    className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={saveWeb}
+              disabled={webSaving}
+              className="w-full bg-emerald-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-emerald-400 disabled:opacity-50"
+            >
+              {webSaving ? 'Guardando...' : webOk ? '✓ Guardado' : 'Guardar todo'}
             </button>
           </div>
         </Card>
