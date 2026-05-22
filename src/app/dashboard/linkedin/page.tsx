@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { getLinkedInStats, getLinkedInHistory, deleteLinkedInPost, upsertLinkedInMonthlyTotals, getLinkedInPostDates, addFeaturedContent, getFeaturedContent, deleteFeaturedContent } from '@/lib/queries'
 import { formatNumber, formatPercent, monthLabel, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
 import { useMesParam } from '@/hooks/useMesParam'
-import type { LinkedInStats } from '@/lib/types'
+import type { LinkedInStats, LinkedInPost } from '@/lib/types'
 import { Trash2, ExternalLink, ChevronUp, ChevronDown, Upload, Plus, PencilLine, RefreshCw, Star } from 'lucide-react'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
