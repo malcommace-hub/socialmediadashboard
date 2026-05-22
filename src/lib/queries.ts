@@ -674,3 +674,58 @@ export async function addFeaturedContent(item: {
 export async function deleteFeaturedContent(id: string) {
   return supabase.from('featured_content').delete().eq('id', id)
 }
+
+export async function getPostByUrl(url: string) {
+  const trimmed = url.trim()
+  if (!trimmed) return null
+
+  const [igRes, liRes, ttRes] = await Promise.all([
+    supabase
+      .from('instagram_posts')
+      .select('description,type,views,impressions,likes,comments,shares,saves')
+      .eq('permalink', trimmed)
+      .maybeSingle(),
+    supabase
+      .from('linkedin_posts')
+      .select('title,impressions,er_decimal')
+      .eq('permalink', trimmed)
+      .maybeSingle(),
+    supabase
+      .from('tiktok_videos')
+      .select('title,views,likes,comments,shares')
+      .eq('permalink', trimmed)
+      .maybeSingle(),
+  ])
+
+  if (igRes.data) {
+    const ig = igRes.data
+    const interactions = (ig.likes ?? 0) + (ig.comments ?? 0) + (ig.shares ?? 0) + (ig.saves ?? 0)
+    return {
+      channel: 'instagram' as const,
+      description: ig.description ?? null,
+      views: ig.views,
+      er_pct: (ig.impressions ?? 0) > 0 ? (interactions / ig.impressions) * 100 : 0,
+    }
+  }
+  if (liRes.data) {
+    const li = liRes.data
+    return {
+      channel: 'linkedin' as const,
+      description: li.title ?? null,
+      views: li.impressions,
+      er_pct: (li.er_decimal ?? 0) * 100,
+    }
+  }
+  if (ttRes.data) {
+    const tt = ttRes.data
+    return {
+      channel: 'tiktok' as const,
+      description: tt.title ?? null,
+      views: tt.views,
+      er_pct: (tt.views ?? 0) > 0
+        ? (((tt.likes ?? 0) + (tt.comments ?? 0) + (tt.shares ?? 0)) / tt.views) * 100
+        : 0,
+    }
+  }
+  return null
+}

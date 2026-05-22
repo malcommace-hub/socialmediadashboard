@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/card'
 import { useMesParam } from '@/hooks/useMesParam'
 import { monthLabel, formatNumber } from '@/lib/utils'
 import {
-  getTopPostsByMonth, getFeaturedContent, addFeaturedContent, deleteFeaturedContent,
+  getTopPostsByMonth, getFeaturedContent, addFeaturedContent, deleteFeaturedContent, getPostByUrl,
 } from '@/lib/queries'
 import { Camera, Briefcase, Music2, ExternalLink, Trash2, Plus, RefreshCw } from 'lucide-react'
 import { clearCache } from '@/lib/queryCache'
@@ -70,6 +70,7 @@ export default function HighlightsPage() {
   const [saving, setSaving] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ ...emptyForm })
+  const [lookupStatus, setLookupStatus] = useState<'idle' | 'searching' | 'found' | 'not_found'>('idle')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -112,6 +113,24 @@ export default function HighlightsPage() {
     } : null,
   }), [topPosts])
 
+  async function handleUrlLookup() {
+    if (!form.postUrl.trim()) return
+    setLookupStatus('searching')
+    const match = await getPostByUrl(form.postUrl)
+    if (match) {
+      setForm(f => ({
+        ...f,
+        channel: match.channel,
+        description: match.description ?? f.description,
+        views: match.views != null ? String(match.views) : f.views,
+        erPct: match.er_pct != null ? String(match.er_pct.toFixed(2)) : f.erPct,
+      }))
+      setLookupStatus('found')
+    } else {
+      setLookupStatus('not_found')
+    }
+  }
+
   async function handleAdd() {
     if (!form.editorialNote.trim()) return
     setSaving(true)
@@ -125,6 +144,7 @@ export default function HighlightsPage() {
       editorial_note: form.editorialNote.trim(),
     })
     setForm({ ...emptyForm })
+    setLookupStatus('idle')
     setShowForm(false)
     await load()
     setSaving(false)
@@ -192,9 +212,19 @@ export default function HighlightsPage() {
                 type="text"
                 placeholder="https://..."
                 value={form.postUrl}
-                onChange={e => setForm(f => ({ ...f, postUrl: e.target.value }))}
+                onChange={e => { setForm(f => ({ ...f, postUrl: e.target.value })); setLookupStatus('idle') }}
+                onBlur={handleUrlLookup}
                 className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
+              {lookupStatus === 'searching' && (
+                <div className="text-xs text-gray-400 mt-1">Buscando en la BD...</div>
+              )}
+              {lookupStatus === 'found' && (
+                <div className="text-xs text-emerald-600 mt-1">✓ Post encontrado — campos completados automáticamente</div>
+              )}
+              {lookupStatus === 'not_found' && (
+                <div className="text-xs text-amber-600 mt-1">Sin match en BD — completá los campos manualmente</div>
+              )}
             </div>
             <div className="col-span-2">
               <label className="text-xs text-gray-500 block mb-1">Descripción / título</label>
@@ -245,7 +275,10 @@ export default function HighlightsPage() {
             >
               {saving ? 'Guardando...' : 'Guardar'}
             </button>
-            <button onClick={() => setShowForm(false)} className="text-sm text-gray-500 px-3 hover:text-gray-700">
+            <button
+              onClick={() => { setShowForm(false); setLookupStatus('idle') }}
+              className="text-sm text-gray-500 px-3 hover:text-gray-700"
+            >
               Cancelar
             </button>
           </div>
