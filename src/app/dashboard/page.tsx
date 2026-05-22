@@ -432,6 +432,13 @@ export default function OverviewPage() {
   const curInt = current ? current.igInteractions + current.liInteractions + current.ttInteractions : 0
   const prevInt = prev ? prev.igInteractions + prev.liInteractions + prev.ttInteractions : 0
 
+  const curPosts = current ? (current.igPostCount ?? 0) + (current.liPostCount ?? 0) : 0
+  const prevPosts = prev ? (prev.igPostCount ?? 0) + (prev.liPostCount ?? 0) : 0
+  const curImprPosts = (current?.igImpressions ?? 0) + (current?.liImpressions ?? 0)
+  const prevImprPosts = (prev?.igImpressions ?? 0) + (prev?.liImpressions ?? 0)
+  const curEfficiency = curPosts > 0 ? Math.round(curImprPosts / curPosts) : null
+  const prevEfficiency = prevPosts > 0 ? Math.round(prevImprPosts / prevPosts) : null
+
   const maLabel = `Media ${maWindow}m`
 
   const qBanner = useMemo(() => {
@@ -1116,7 +1123,7 @@ export default function OverviewPage() {
           )}
 
           {/* KPI cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-3 mb-6">
             <KpiCard label="Impresiones totales" value={formatNumber(curImp)} trend={pctChange(curImp, prevImp)} dotColor="bg-emerald-500" />
             <KpiCard label="Nuevos seguidores" value={formatNumber(curFoll)} trend={pctChange(curFoll, prevFoll)} dotColor="bg-purple-500" />
             <KpiCard label="Interacciones" value={formatNumber(curInt)} trend={pctChange(curInt, prevInt)} dotColor="bg-violet-500" />
@@ -1138,6 +1145,14 @@ export default function OverviewPage() {
               trend={current?.newsletterViews && prev?.newsletterViews ? pctChange(current.newsletterViews, prev.newsletterViews) : null}
               dotColor="bg-amber-500"
             />
+            {curEfficiency !== null && (
+              <KpiCard
+                label="Eficiencia (impr/post)"
+                value={formatNumber(curEfficiency)}
+                trend={curEfficiency !== null && prevEfficiency !== null ? pctChange(curEfficiency, prevEfficiency) : null}
+                dotColor="bg-teal-500"
+              />
+            )}
           </div>
 
           {/* Impressions — full width */}
