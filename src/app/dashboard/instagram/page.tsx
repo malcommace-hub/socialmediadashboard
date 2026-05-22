@@ -1202,6 +1202,38 @@ export default function InstagramPage() {
             </Card>
           )}
 
+          {viewsDist && (
+            <Card className="mb-6">
+              <div
+                className="flex items-center justify-between cursor-pointer select-none"
+                onClick={() => setDistOpen(o => !o)}
+              >
+                <span className="text-sm font-semibold text-gray-700">Distribución de alcance</span>
+                <span className="text-gray-400">{distOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</span>
+              </div>
+              {distOpen && (
+                <div className="mt-4">
+                  <ResponsiveContainer width="100%" height={160}>
+                    <BarChart data={viewsDist.buckets} layout="vertical" margin={{ top: 0, right: 20, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f3f4f6" />
+                      <XAxis type="number" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                      <YAxis type="category" dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} width={60} />
+                      <Tooltip formatter={(v) => [`${v} posts`, 'Posts']} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                      <Bar dataKey="count" name="Posts" fill="#f43f5e" radius={[0, 4, 4, 0]}>
+                        <LabelList dataKey="count" position="right" style={{ fontSize: 11, fontWeight: 700, fill: '#374151' }} />
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                  {viewsDist.insight && (
+                    <div className="mt-3 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+                      {viewsDist.insight}
+                    </div>
+                  )}
+                </div>
+              )}
+            </Card>
+          )}
+
           {/* Regular posts table */}
           <Card>
             <div className="flex items-center justify-between mb-4">
