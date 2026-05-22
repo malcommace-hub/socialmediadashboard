@@ -598,3 +598,79 @@ export async function getLinkedInTopPosts(year: number, limit = 12) {
     .limit(limit)
   return (data ?? []).map(p => ({ ...p, er: (p.er_decimal ?? 0) * 100 }))
 }
+
+// ─── Featured content (Impactos del mes) ─────
+
+export async function getTopPostsByMonth(year: number, month: number) {
+  const [igRes, liRes, ttRes] = await Promise.all([
+    supabase
+      .from('instagram_posts')
+      .select('id,description,type,views,impressions,likes,comments,shares,saves,permalink')
+      .eq('year', year).eq('month', month)
+      .order('views', { ascending: false })
+      .limit(1),
+    supabase
+      .from('linkedin_posts')
+      .select('id,title,impressions,interactions,er_decimal,permalink')
+      .eq('year', year).eq('month', month)
+      .order('impressions', { ascending: false })
+      .limit(1),
+    supabase
+      .from('tiktok_videos')
+      .select('id,title,views,likes,comments,shares,permalink')
+      .eq('year', year).eq('month', month)
+      .order('views', { ascending: false })
+      .limit(1),
+  ])
+
+  const ig = igRes.data?.[0] ?? null
+  const li = liRes.data?.[0] ?? null
+  const tt = ttRes.data?.[0] ?? null
+
+  return {
+    instagram: ig ? {
+      ...ig,
+      er: (ig.impressions ?? 0) > 0
+        ? (((ig.likes ?? 0) + (ig.comments ?? 0) + (ig.shares ?? 0) + (ig.saves ?? 0)) / ig.impressions) * 100
+        : 0,
+    } : null,
+    linkedin: li ? {
+      ...li,
+      er: (li.er_decimal ?? 0) * 100,
+    } : null,
+    tiktok: tt ? {
+      ...tt,
+      er: (tt.views ?? 0) > 0
+        ? (((tt.likes ?? 0) + (tt.comments ?? 0) + (tt.shares ?? 0)) / tt.views) * 100
+        : 0,
+    } : null,
+  }
+}
+
+export async function getFeaturedContent(year: number, month: number) {
+  const { data } = await supabase
+    .from('featured_content')
+    .select('*')
+    .eq('year', year)
+    .eq('month', month)
+    .order('created_at', { ascending: false })
+  return (data ?? []) as Array<{
+    id: string; year: number; month: number; channel: string
+    post_url: string | null; description: string | null
+    views: number | null; er_pct: number | null
+    editorial_note: string; created_at: string
+  }>
+}
+
+export async function addFeaturedContent(item: {
+  year: number; month: number; channel: string
+  post_url?: string | null; description?: string | null
+  views?: number | null; er_pct?: number | null
+  editorial_note: string
+}) {
+  return supabase.from('featured_content').insert(item).select().single()
+}
+
+export async function deleteFeaturedContent(id: string) {
+  return supabase.from('featured_content').delete().eq('id', id)
+}

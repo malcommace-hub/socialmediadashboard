@@ -1,210 +1,394 @@
 'use client'
-import { useEffect, useState } from 'react'
-import { Card, CardTitle } from '@/components/ui/card'
-import { formatNumber } from '@/lib/utils'
-import { ExternalLink, Trash2, Plus, Star } from 'lucide-react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
+import { MonthSelector } from '@/components/ui/month-selector'
+import { Card } from '@/components/ui/card'
+import { useMesParam } from '@/hooks/useMesParam'
+import { monthLabel, formatNumber } from '@/lib/utils'
+import {
+  getTopPostsByMonth, getFeaturedContent, addFeaturedContent, deleteFeaturedContent,
+} from '@/lib/queries'
+import { Camera, Briefcase, Music2, ExternalLink, Trash2, Plus, RefreshCw } from 'lucide-react'
+import { clearCache } from '@/lib/queryCache'
+import { SkeletonCard } from '@/components/dashboard/SkeletonCard'
 
-interface HighlightedPost {
-  id: string
-  channel: 'instagram' | 'linkedin' | 'tiktok'
-  year: number
-  month: number
-  title: string
-  metric: string
+type TopPosts = Awaited<ReturnType<typeof getTopPostsByMonth>>
+type FeaturedItem = Awaited<ReturnType<typeof getFeaturedContent>>[0]
+
+type Channel = 'instagram' | 'linkedin' | 'tiktok'
+
+interface DisplayPost {
+  label: string
+  metricValue: number
+  er: number
   permalink: string | null
-  note: string
-  addedAt: string
+  type?: string | null
 }
 
-const STORAGE_KEY = 'seeds_highlights_v1'
-const CHANNEL_COLORS: Record<string, string> = {
-  instagram: 'bg-rose-100 text-rose-700 border-rose-200',
-  linkedin: 'bg-blue-100 text-blue-700 border-blue-200',
-  tiktok: 'bg-gray-100 text-gray-700 border-gray-200',
+const CHANNEL_CONFIG: Record<Channel, {
+  label: string
+  Icon: React.ComponentType<{ size?: number }>
+  metricLabel: string
+  accentBg: string
+  accentBorder: string
+  accentText: string
+  badgeCls: string
+}> = {
+  instagram: {
+    label: 'Instagram', Icon: Camera, metricLabel: 'Views',
+    accentBg: 'bg-rose-50', accentBorder: 'border-rose-200', accentText: 'text-rose-700',
+    badgeCls: 'bg-rose-100 text-rose-700 border-rose-200',
+  },
+  linkedin: {
+    label: 'LinkedIn', Icon: Briefcase, metricLabel: 'Impr.',
+    accentBg: 'bg-blue-50', accentBorder: 'border-blue-200', accentText: 'text-blue-700',
+    badgeCls: 'bg-blue-100 text-blue-700 border-blue-200',
+  },
+  tiktok: {
+    label: 'TikTok', Icon: Music2, metricLabel: 'Views',
+    accentBg: 'bg-gray-50', accentBorder: 'border-gray-200', accentText: 'text-gray-600',
+    badgeCls: 'bg-gray-100 text-gray-700 border-gray-200',
+  },
 }
-const MONTH_NAMES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+
+const CHANNELS: Channel[] = ['instagram', 'linkedin', 'tiktok']
 
 const emptyForm = {
-  channel: 'instagram' as HighlightedPost['channel'],
-  year: new Date().getFullYear(),
-  month: new Date().getMonth() + 1,
-  title: '',
-  metric: '',
-  permalink: '',
-  note: '',
+  channel: 'instagram' as Channel,
+  postUrl: '',
+  description: '',
+  views: '',
+  erPct: '',
+  editorialNote: '',
 }
 
 export default function HighlightsPage() {
-  const [highlights, setHighlights] = useState<HighlightedPost[]>([])
+  const { year, month, setYear, setMonth } = useMesParam()
+  const [topPosts, setTopPosts] = useState<TopPosts | null>(null)
+  const [featured, setFeatured] = useState<FeaturedItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ ...emptyForm })
-  const [filter, setFilter] = useState<string>('all')
 
-  useEffect(() => {
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
     try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      if (stored) setHighlights(JSON.parse(stored))
-    } catch { /* ignore */ }
-  }, [])
-
-  function save(items: HighlightedPost[]) {
-    setHighlights(items)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
-  }
-
-  function addPost() {
-    if (!form.title && !form.permalink) return
-    const item: HighlightedPost = {
-      id: `${Date.now()}-${Math.random()}`,
-      ...form,
-      permalink: form.permalink || null,
-      addedAt: new Date().toISOString(),
+      const [top, curated] = await Promise.all([
+        getTopPostsByMonth(year, month),
+        getFeaturedContent(year, month),
+      ])
+      setTopPosts(top)
+      setFeatured(curated)
+    } catch (err) {
+      setError((err as { message?: string })?.message ?? 'Error al cargar datos')
+    } finally {
+      setLoading(false)
     }
-    save([item, ...highlights])
+  }, [year, month])
+
+  useEffect(() => { load() }, [load])
+
+  const channelMap = useMemo((): Record<Channel, DisplayPost | null> => ({
+    instagram: topPosts?.instagram ? {
+      label: topPosts.instagram.description ?? '',
+      metricValue: topPosts.instagram.views,
+      er: topPosts.instagram.er,
+      permalink: topPosts.instagram.permalink ?? null,
+      type: topPosts.instagram.type,
+    } : null,
+    linkedin: topPosts?.linkedin ? {
+      label: topPosts.linkedin.title ?? '',
+      metricValue: topPosts.linkedin.impressions,
+      er: topPosts.linkedin.er,
+      permalink: topPosts.linkedin.permalink ?? null,
+    } : null,
+    tiktok: topPosts?.tiktok ? {
+      label: topPosts.tiktok.title ?? '',
+      metricValue: topPosts.tiktok.views,
+      er: topPosts.tiktok.er,
+      permalink: topPosts.tiktok.permalink ?? null,
+    } : null,
+  }), [topPosts])
+
+  async function handleAdd() {
+    if (!form.editorialNote.trim()) return
+    setSaving(true)
+    await addFeaturedContent({
+      year, month,
+      channel: form.channel,
+      post_url: form.postUrl.trim() || null,
+      description: form.description.trim() || null,
+      views: form.views.trim() !== '' ? (parseInt(form.views) || 0) : null,
+      er_pct: form.erPct.trim() !== '' ? (parseFloat(form.erPct) || 0) : null,
+      editorial_note: form.editorialNote.trim(),
+    })
     setForm({ ...emptyForm })
     setShowForm(false)
+    await load()
+    setSaving(false)
   }
 
-  function removePost(id: string) {
+  async function handleDelete(id: string) {
     if (!confirm('¿Quitar este contenido destacado?')) return
-    save(highlights.filter(h => h.id !== id))
+    await deleteFeaturedContent(id)
+    clearCache()
+    await load()
   }
-
-  function updateNote(id: string, note: string) {
-    save(highlights.map(h => h.id === id ? { ...h, note } : h))
-  }
-
-  const filtered = filter === 'all' ? highlights : highlights.filter(h => h.channel === filter)
 
   return (
     <div className="p-8 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <Star size={22} className="text-amber-400" fill="currentColor" />
-            Contenidos destacados
-          </h1>
-          <p className="text-gray-500 text-sm mt-0.5">Spotlight de posts para presentar en reuniones</p>
+          <h1 className="text-2xl font-bold text-gray-900">Impactos del mes</h1>
+          <p className="text-gray-500 text-sm mt-0.5">{monthLabel(year, month)} · Seeds Business Radar</p>
         </div>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-1.5 bg-emerald-500 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-emerald-400"
-        >
-          <Plus size={15} /> Agregar contenido
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowForm(v => !v)}
+            className="presentation-hide flex items-center gap-1.5 bg-emerald-500 text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-emerald-400"
+          >
+            <Plus size={15} /> Agregar contenido
+          </button>
+          <button
+            onClick={() => { clearCache(); load() }}
+            className="presentation-hide p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            title="Actualizar datos"
+          >
+            <RefreshCw size={15} />
+          </button>
+          <MonthSelector year={year} month={month} onChange={(y, m) => { setYear(y); setMonth(m) }} />
+        </div>
       </div>
+
+      {error && (
+        <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm">
+          ⚠ {error}
+        </div>
+      )}
 
       {/* Add form */}
       {showForm && (
-        <Card className="mb-6 border-emerald-200 bg-emerald-50">
-          <CardTitle className="mb-4">Nuevo contenido destacado</CardTitle>
+        <Card className="mb-6 presentation-hide border-emerald-200 bg-emerald-50">
+          <div className="font-semibold text-gray-800 mb-4">Nuevo contenido destacado</div>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
             <div>
               <label className="text-xs text-gray-500 block mb-1">Canal</label>
-              <select value={form.channel} onChange={e => setForm(f => ({ ...f, channel: e.target.value as HighlightedPost['channel'] }))}
-                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+              <select
+                value={form.channel}
+                onChange={e => setForm(f => ({ ...f, channel: e.target.value as Channel }))}
+                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              >
                 <option value="instagram">Instagram</option>
                 <option value="linkedin">LinkedIn</option>
                 <option value="tiktok">TikTok</option>
               </select>
             </div>
-            <div>
-              <label className="text-xs text-gray-500 block mb-1">Año</label>
-              <input type="number" value={form.year} onChange={e => setForm(f => ({ ...f, year: parseInt(e.target.value) || 2026 }))}
-                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 block mb-1">Mes</label>
-              <select value={form.month} onChange={e => setForm(f => ({ ...f, month: parseInt(e.target.value) }))}
-                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
-                {MONTH_NAMES.map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 block mb-1">Métrica clave</label>
-              <input type="text" placeholder="ej: 1.2M views" value={form.metric} onChange={e => setForm(f => ({ ...f, metric: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            <div className="col-span-3">
+              <label className="text-xs text-gray-500 block mb-1">URL del post</label>
+              <input
+                type="text"
+                placeholder="https://..."
+                value={form.postUrl}
+                onChange={e => setForm(f => ({ ...f, postUrl: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
             </div>
             <div className="col-span-2">
-              <label className="text-xs text-gray-500 block mb-1">Título / descripción del contenido</label>
-              <input type="text" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+              <label className="text-xs text-gray-500 block mb-1">Descripción / título</label>
+              <input
+                type="text"
+                value={form.description}
+                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
             </div>
-            <div className="col-span-2">
-              <label className="text-xs text-gray-500 block mb-1">Link del post</label>
-              <input type="text" placeholder="https://..." value={form.permalink} onChange={e => setForm(f => ({ ...f, permalink: e.target.value }))}
-                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Views / Impr.</label>
+              <input
+                type="number"
+                value={form.views}
+                onChange={e => setForm(f => ({ ...f, views: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">ER%</label>
+              <input
+                type="number"
+                step="0.01"
+                value={form.erPct}
+                onChange={e => setForm(f => ({ ...f, erPct: e.target.value }))}
+                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
             </div>
             <div className="col-span-4">
-              <label className="text-xs text-gray-500 block mb-1">Nota / insight</label>
-              <textarea value={form.note} onChange={e => setForm(f => ({ ...f, note: e.target.value }))}
-                rows={2} placeholder="¿Por qué destaca? ¿Qué aprendimos?"
-                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none" />
+              <label className="text-xs text-gray-500 block mb-1">
+                Nota editorial <span className="text-red-400">*</span>
+              </label>
+              <textarea
+                value={form.editorialNote}
+                onChange={e => setForm(f => ({ ...f, editorialNote: e.target.value }))}
+                rows={2}
+                placeholder="¿Por qué destaca? ¿Qué generó más allá de los números?"
+                className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+              />
             </div>
           </div>
           <div className="flex gap-2">
-            <button onClick={addPost} className="bg-emerald-500 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-emerald-400">
-              Guardar
+            <button
+              onClick={handleAdd}
+              disabled={saving || !form.editorialNote.trim()}
+              className="bg-emerald-500 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-emerald-400 disabled:opacity-50"
+            >
+              {saving ? 'Guardando...' : 'Guardar'}
             </button>
-            <button onClick={() => setShowForm(false)} className="text-sm text-gray-500 px-3 hover:text-gray-700">Cancelar</button>
+            <button onClick={() => setShowForm(false)} className="text-sm text-gray-500 px-3 hover:text-gray-700">
+              Cancelar
+            </button>
           </div>
         </Card>
       )}
 
-      {/* Filter tabs */}
-      <div className="flex gap-1 mb-4">
-        {['all', 'instagram', 'linkedin', 'tiktok'].map(ch => (
-          <button key={ch} onClick={() => setFilter(ch)}
-            className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors capitalize ${filter === ch ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-            {ch === 'all' ? 'Todos' : ch}
-          </button>
-        ))}
-      </div>
-
-      {/* Highlights grid */}
-      {filtered.length === 0 ? (
-        <div className="text-center py-16 text-gray-400">
-          <Star size={32} className="mx-auto mb-3 opacity-30" />
-          <div className="text-sm">No hay contenidos destacados aún.</div>
-          <div className="text-xs mt-1">Agregá posts que quieras mostrar en reuniones.</div>
-        </div>
+      {loading ? (
+        <>
+          <SkeletonCard kpi count={3} />
+          <SkeletonCard lines={3} />
+        </>
       ) : (
-        <div className="space-y-3">
-          {filtered.map(h => (
-            <Card key={h.id} className="hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-2 flex-wrap">
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border capitalize ${CHANNEL_COLORS[h.channel]}`}>{h.channel}</span>
-                    <span className="text-xs text-gray-400">{MONTH_NAMES[h.month - 1]} {h.year}</span>
-                    {h.metric && (
-                      <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">{h.metric}</span>
-                    )}
+        <>
+          {/* ── Sección 1: Top posts automáticos ── */}
+          <div className="flex items-center gap-2 mb-4">
+            <div className="text-xs font-bold tracking-widest text-gray-400 uppercase">Top del mes</div>
+            <div className="flex-1 h-px bg-gray-100" />
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-8">
+            {CHANNELS.map(ch => {
+              const cfg = CHANNEL_CONFIG[ch]
+              const post = channelMap[ch]
+              return (
+                <div key={ch} className={`bg-white rounded-2xl border p-4 shadow-sm featured-top-card ${cfg.accentBorder}`}>
+                  <div className={`flex items-center gap-2 mb-3 pb-2 border-b ${cfg.accentBorder}`}>
+                    <div className={`w-7 h-7 rounded-lg ${cfg.accentBg} flex items-center justify-center ${cfg.accentText}`}>
+                      <cfg.Icon size={15} />
+                    </div>
+                    <span className={`text-xs font-bold uppercase tracking-wider ${cfg.accentText}`}>{cfg.label}</span>
                   </div>
-                  <div className="font-medium text-gray-800 text-sm mb-2 line-clamp-2">{h.title}</div>
-                  <textarea
-                    value={h.note}
-                    onChange={e => updateNote(h.id, e.target.value)}
-                    placeholder="Agregá un insight o nota sobre este contenido..."
-                    rows={2}
-                    className="w-full text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-                <div className="flex flex-col items-end gap-2 shrink-0">
-                  {h.permalink && (
-                    <a href={h.permalink} target="_blank" rel="noopener noreferrer"
-                      className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium">
-                      Ver <ExternalLink size={12} />
-                    </a>
+
+                  {post ? (
+                    <>
+                      <div className="text-sm text-gray-700 font-medium line-clamp-2 mb-3 min-h-[2.5rem]">
+                        {post.label || '(sin descripción)'}
+                      </div>
+                      <div className="flex items-center gap-2 mb-3 flex-wrap">
+                        <span className="text-xs font-bold text-gray-900">
+                          {formatNumber(post.metricValue)}
+                          <span className="font-normal text-gray-400 ml-1">{cfg.metricLabel}</span>
+                        </span>
+                        {post.er > 0 && (
+                          <span className="text-xs text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">
+                            {post.er.toFixed(1)}% ER
+                          </span>
+                        )}
+                        {post.type && (
+                          <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full border ${cfg.badgeCls}`}>
+                            {post.type}
+                          </span>
+                        )}
+                      </div>
+                      {post.permalink && (
+                        <a
+                          href={post.permalink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`inline-flex items-center gap-1 text-xs font-medium ${cfg.accentText} hover:opacity-70 transition-opacity`}
+                        >
+                          Ver post <ExternalLink size={11} />
+                        </a>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-center h-24 text-gray-300 text-xs">
+                      Sin posts cargados para este mes
+                    </div>
                   )}
-                  <button onClick={() => removePost(h.id)} className="text-gray-300 hover:text-red-500 transition-colors">
-                    <Trash2 size={14} />
-                  </button>
                 </div>
+              )
+            })}
+          </div>
+
+          {/* ── Sección 2: Curados ──────────────── */}
+          <div className="flex items-center gap-2 mb-4">
+            <div className="text-xs font-bold tracking-widest text-gray-400 uppercase">Curados</div>
+            <div className="flex-1 h-px bg-gray-100" />
+          </div>
+
+          {featured.length === 0 ? (
+            <div className="text-center py-12 text-gray-400">
+              <div className="text-sm">No hay contenidos curados para este mes.</div>
+              <div className="text-xs mt-1 presentation-hide">
+                Usá el botón &ldquo;Agregar contenido&rdquo; para destacar posts con una nota editorial.
               </div>
-            </Card>
-          ))}
-        </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {featured.map(item => {
+                const ch = (item.channel as Channel) in CHANNEL_CONFIG ? item.channel as Channel : 'instagram'
+                const cfg = CHANNEL_CONFIG[ch]
+                return (
+                  <Card key={item.id}>
+                    <div className="flex items-start justify-between gap-4 mb-3">
+                      <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border shrink-0 ${cfg.badgeCls}`}>
+                          {cfg.label}
+                        </span>
+                        {item.description && (
+                          <span className="text-sm text-gray-700 font-medium truncate min-w-0">{item.description}</span>
+                        )}
+                        {item.views != null && (
+                          <span className="text-xs font-bold text-gray-900 shrink-0">
+                            {formatNumber(item.views)}{' '}
+                            <span className="font-normal text-gray-400">{cfg.metricLabel}</span>
+                          </span>
+                        )}
+                        {item.er_pct != null && (
+                          <span className="text-xs text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full shrink-0">
+                            {Number(item.er_pct).toFixed(1)}% ER
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {item.post_url && (
+                          <a
+                            href={item.post_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-gray-400 hover:text-blue-600 transition-colors"
+                          >
+                            <ExternalLink size={14} />
+                          </a>
+                        )}
+                        <button
+                          onClick={() => handleDelete(item.id)}
+                          className="presentation-hide text-gray-200 hover:text-red-500 transition-colors"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                    <div className={`featured-editorial-note rounded-xl px-4 py-3 text-sm text-gray-700 ${cfg.accentBg} border ${cfg.accentBorder}`}>
+                      <span className={`text-xs font-bold uppercase tracking-wider ${cfg.accentText} mr-2`}>Nota:</span>
+                      {item.editorial_note}
+                    </div>
+                  </Card>
+                )
+              })}
+            </div>
+          )}
+        </>
       )}
     </div>
   )
