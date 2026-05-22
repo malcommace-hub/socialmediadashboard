@@ -1272,7 +1272,7 @@ export default function InstagramPage() {
                       <td className="ph-col py-2 px-2 text-right">
                         {fid
                           ? <button onClick={() => handleUnfeature(fid)} className="text-amber-400 hover:text-gray-300 transition-colors" title="Quitar de destacados"><Star size={14} fill="currentColor" /></button>
-                          : <button onClick={() => { setFeaturedFormPostId(featuredFormPostId === post.id ? null : post.id); setFeaturedNote('') }} className="text-gray-200 hover:text-amber-400 group-hover:text-gray-400 transition-colors" title="Destacar este post"><Star size={14} /></button>
+                          : <button onClick={() => { setFeaturedFormPostId(featuredFormPostId === post.id ? null : post.id); setFeaturedNote('') }} className="text-gray-400 hover:text-amber-400 transition-colors" title="Destacar este post"><Star size={14} /></button>
                         }
                       </td>
                       <td className="ph-col py-2 px-2 text-right">
