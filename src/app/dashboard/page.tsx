@@ -8,7 +8,8 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, LabelList, LineChart,
 } from 'recharts'
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ExternalLink, RefreshCw, Printer } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ExternalLink, RefreshCw, Printer, FlaskConical } from 'lucide-react'
+import { runSmokeTest, type SmokeCheck } from '@/lib/smokeTest'
 import { SkeletonCard } from '@/components/dashboard/SkeletonCard'
 import { clearCache } from '@/lib/queryCache'
 import { MonthScoreCard } from '@/components/dashboard/MonthScoreCard'
@@ -316,6 +317,9 @@ export default function OverviewPage() {
   const [showQModal, setShowQModal] = useState(false)
   const [qNote, setQNote] = useState('')
   const [qNoteSaveStatus, setQNoteSaveStatus] = useState<'' | 'saving' | 'saved'>('')
+  const [smokeOpen, setSmokeOpen] = useState(false)
+  const [smokeResults, setSmokeResults] = useState<SmokeCheck[] | null>(null)
+  const [smokeRunning, setSmokeRunning] = useState(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const qNoteSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -366,6 +370,15 @@ export default function OverviewPage() {
       .catch(() => {})
     return () => { cancelled = true }
   }, [selectedYear, selectedMonth])
+
+  async function handleSmokeTest() {
+    setSmokeRunning(true)
+    setSmokeOpen(true)
+    setSmokeResults(null)
+    const results = await runSmokeTest()
+    setSmokeResults(results)
+    setSmokeRunning(false)
+  }
 
   function handleNoteChange(value: string) {
     setNote(value)
@@ -753,6 +766,17 @@ export default function OverviewPage() {
           >
             <RefreshCw size={15} />
           </button>
+          {process.env.NODE_ENV === 'development' && (
+            <button
+              onClick={handleSmokeTest}
+              disabled={smokeRunning}
+              className="presentation-hide flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg font-medium bg-violet-100 text-violet-700 hover:bg-violet-200 transition-colors disabled:opacity-50"
+              title="Verificar conexión a DB y tablas"
+            >
+              <FlaskConical size={13} />
+              {smokeRunning ? 'Verificando…' : 'Test DB'}
+            </button>
+          )}
           {current && (
             <>
               <button
@@ -782,6 +806,40 @@ export default function OverviewPage() {
           )}
         </div>
       </div>
+
+      {process.env.NODE_ENV === 'development' && smokeOpen && (
+        <div className="mb-6 bg-gray-900 rounded-2xl p-4 text-xs font-mono">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-gray-300 font-semibold">Smoke Test — DB</span>
+            <button onClick={() => setSmokeOpen(false)} className="text-gray-500 hover:text-gray-300 leading-none text-base">×</button>
+          </div>
+          {smokeRunning ? (
+            <div className="text-gray-400">Ejecutando checks…</div>
+          ) : smokeResults ? (
+            <div className="space-y-1">
+              {smokeResults.map(r => (
+                <div key={r.name} className="flex items-center gap-2">
+                  <span className={r.status === 'ok' ? 'text-emerald-400' : r.status === 'warn' ? 'text-amber-400' : 'text-red-400'}>
+                    {r.status === 'ok' ? '✓' : r.status === 'warn' ? '⚠' : '✗'}
+                  </span>
+                  <span className="text-gray-300 w-44 shrink-0">{r.name}</span>
+                  {r.rowCount !== undefined && <span className="text-gray-500">{r.rowCount} rows</span>}
+                  {r.message && <span className={r.status === 'fail' ? 'text-red-300' : 'text-amber-300'}>{r.message}</span>}
+                </div>
+              ))}
+              <div className="mt-2 pt-2 border-t border-gray-700 text-gray-500">
+                {smokeResults.filter(r => r.status === 'ok').length}/{smokeResults.length} OK
+                {smokeResults.some(r => r.status === 'fail') && (
+                  <span className="text-red-400 ml-2">— {smokeResults.filter(r => r.status === 'fail').length} error(es)</span>
+                )}
+                {smokeResults.some(r => r.status === 'warn') && !smokeResults.some(r => r.status === 'fail') && (
+                  <span className="text-amber-400 ml-2">— {smokeResults.filter(r => r.status === 'warn').length} advertencia(s)</span>
+                )}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      )}
 
       {loading ? (
         <>
