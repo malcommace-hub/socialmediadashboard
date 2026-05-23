@@ -92,6 +92,7 @@ export default function TikTokPage() {
     })
     setNewVideo({ title: '', video_date: '', views: '', likes: '', comments: '', shares: '', permalink: '' })
     setShowAddForm(false)
+    clearCache()
     await load()
     setSaving(false)
   }
@@ -99,6 +100,7 @@ export default function TikTokPage() {
   async function handleDelete(id: string) {
     if (!confirm('¿Eliminar este video?')) return
     await deleteTikTokVideo(id)
+    clearCache()
     await load()
   }
 
@@ -112,6 +114,7 @@ export default function TikTokPage() {
     if (!confirm(`¿Eliminar ${selected.size} elemento(s)? Esta acción no se puede deshacer.`)) return
     await Promise.all([...selected].map(id => deleteTikTokVideo(id)))
     setSelected(new Set())
+    clearCache()
     await load()
   }
 

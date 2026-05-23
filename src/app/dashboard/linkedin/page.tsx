@@ -147,6 +147,7 @@ export default function LinkedInPage() {
       total_interactions: parseInt(totalInteractions) || undefined,
       avg_er: avgER !== '' ? parseFloat(avgER) : null,
     })
+    clearCache()
     await load()
     setEditMonthly(false)
     setSaving(false)
@@ -155,6 +156,7 @@ export default function LinkedInPage() {
   async function handleDelete(id: string) {
     if (!confirm('¿Eliminar este post?')) return
     await deleteLinkedInPost(id)
+    clearCache()
     await load()
   }
 
@@ -169,6 +171,7 @@ export default function LinkedInPage() {
     const { deleteLinkedInPost: del } = await import('@/lib/queries')
     await Promise.all([...selected].map(id => del(id)))
     setSelected(new Set())
+    clearCache()
     await load()
   }
 

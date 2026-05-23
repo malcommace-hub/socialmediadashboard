@@ -5,6 +5,7 @@ import { MonthSelector } from '@/components/ui/month-selector'
 import { Card } from '@/components/ui/card'
 import { getYouTubeMonthly, upsertYouTubeMonthly } from '@/lib/queries'
 import { formatNumber, currentYearMonth, monthLabel } from '@/lib/utils'
+import { clearCache } from '@/lib/queryCache'
 import type { YouTubeMonthly } from '@/lib/types'
 
 export default function YouTubePage() {
@@ -30,6 +31,7 @@ export default function YouTubePage() {
   async function save() {
     setSaving(true)
     await upsertYouTubeMonthly({ year, month, shorts_views: parseInt(views) || 0 })
+    clearCache()
     await load()
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)

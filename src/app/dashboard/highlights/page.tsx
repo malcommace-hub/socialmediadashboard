@@ -146,6 +146,7 @@ export default function HighlightsPage() {
     setForm({ ...emptyForm })
     setLookupStatus('idle')
     setShowForm(false)
+    clearCache()
     await load()
     setSaving(false)
   }
