@@ -111,6 +111,8 @@ export default function InstagramPage() {
   const [collabWithout, setCollabWithout] = useState(0)
   const [collabsOpen, setCollabsOpen] = useState(false)
   const [weeklyOpen, setWeeklyOpen] = useState(false)
+  const [typeBreakdownOpen, setTypeBreakdownOpen] = useState(false)
+  const [extCollabOpen, setExtCollabOpen] = useState(false)
   const [presentationMode, setPresentationMode] = useState(false)
   const [expandedCollab, setExpandedCollab] = useState<string | null>(null)
   const [collabPostsMap, setCollabPostsMap] = useState<Record<string, InstagramPost[]>>({})
@@ -982,130 +984,17 @@ export default function InstagramPage() {
             )}
           </Card>
 
-          {/* External collabs section */}
-          <Card className="mb-6 border-l-4 border-l-orange-400">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <CardTitle>Collabs externos</CardTitle>
-                <p className="text-xs text-gray-400 mt-1">
-                  Contenidos subidos por influencers donde Seeds figura como colaborador.
-                  Sus views se suman automáticamente al total.
-                </p>
-              </div>
-              <button onClick={() => setShowAddCollabForm(!showAddCollabForm)}
-                className="presentation-hide flex items-center gap-1 text-xs bg-orange-500 text-white px-3 py-1 rounded-lg font-medium hover:bg-orange-400">
-                <Plus size={13} /> Agregar collab
-              </button>
-            </div>
-
-            {showAddCollabForm && (
-              <div className="presentation-hide bg-orange-50 rounded-xl p-4 mb-4 border border-orange-200">
-                <div className="text-sm font-medium text-gray-700 mb-3">Nuevo contenido collab externo</div>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                  <div className="col-span-2">
-                    <label className="text-xs text-gray-500 block mb-1">Descripción / título del post</label>
-                    <input type="text" placeholder="Descripción del contenido"
-                      value={newCollab.description} onChange={e => setNewCollab(v => ({ ...v, description: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 block mb-1">Cuenta del influencer</label>
-                    <input type="text" placeholder="@patriciajebsen"
-                      value={newCollab.collab_account} onChange={e => setNewCollab(v => ({ ...v, collab_account: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 block mb-1">Fecha</label>
-                    <input type="date" value={newCollab.post_date} onChange={e => setNewCollab(v => ({ ...v, post_date: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 block mb-1">Views</label>
-                    <input type="number" value={newCollab.views} onChange={e => setNewCollab(v => ({ ...v, views: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 block mb-1">Likes</label>
-                    <input type="number" value={newCollab.likes} onChange={e => setNewCollab(v => ({ ...v, likes: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 block mb-1">Comentarios</label>
-                    <input type="number" value={newCollab.comments} onChange={e => setNewCollab(v => ({ ...v, comments: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 block mb-1">Link del post</label>
-                    <input type="text" placeholder="https://instagram.com/..."
-                      value={newCollab.permalink} onChange={e => setNewCollab(v => ({ ...v, permalink: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
-                  </div>
-                </div>
-                <div className="flex gap-2 mt-3">
-                  <button onClick={() => savePost(true)} disabled={saving}
-                    className="bg-orange-500 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-orange-400 disabled:opacity-50">
-                    {saving ? 'Guardando...' : 'Guardar collab'}
-                  </button>
-                  <button onClick={() => setShowAddCollabForm(false)} className="text-sm text-gray-500 px-3 py-1.5 hover:text-gray-700">Cancelar</button>
-                </div>
-              </div>
-            )}
-
-            {externalCollabs.length === 0 && !showAddCollabForm ? (
-              <p className="text-sm text-gray-400 py-2">No hay collabs externos cargados para este mes.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100">
-                      <th className="text-left py-2 px-2 text-xs font-medium text-gray-400">Cuenta</th>
-                      <th className="text-left py-2 px-2 text-xs font-medium text-gray-400">Descripción</th>
-                      <th className="text-left py-2 px-2 text-xs font-medium text-gray-400">Fecha</th>
-                      <th className="text-right py-2 px-2 text-xs font-medium text-gray-400">Views</th>
-                      <th className="text-right py-2 px-2 text-xs font-medium text-gray-400">Likes</th>
-                      <th className="text-right py-2 px-2 text-xs font-medium text-gray-400">Link</th>
-                      <th className="py-2 px-2 w-8" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {externalCollabs.map(post => (
-                      <tr key={post.id} className="border-b border-gray-50 hover:bg-orange-50 group">
-                        <td className="py-2 px-2">
-                          <span className="text-xs font-medium text-orange-600">{post.collab_account || '—'}</span>
-                        </td>
-                        <td className="py-2 px-2 text-gray-700 max-w-xs truncate">{post.description || '—'}</td>
-                        <td className="py-2 px-2 text-gray-500 whitespace-nowrap">{post.post_date ?? '—'}</td>
-                        <td className="py-2 px-2 text-right font-medium">{formatNumber(post.views)}</td>
-                        <td className="py-2 px-2 text-right text-gray-600">{formatNumber(post.likes)}</td>
-                        <td className="py-2 px-2 text-right">
-                          {post.permalink
-                            ? <a href={post.permalink} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 inline-flex"><ExternalLink size={14} /></a>
-                            : '—'}
-                        </td>
-                        <td className="py-2 px-2 text-right">
-                          <button onClick={() => handleDelete(post.id)}
-                            className="text-gray-200 hover:text-red-500 group-hover:text-gray-400 transition-colors">
-                            <Trash2 size={14} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    <tr className="bg-orange-50">
-                      <td colSpan={3} className="py-2 px-2 text-xs font-semibold text-orange-700">Total collabs externos</td>
-                      <td className="py-2 px-2 text-right text-sm font-bold text-orange-700">{formatNumber(collabViewsSum)}</td>
-                      <td colSpan={3} />
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </Card>
-
           {/* Content type breakdown */}
           {typeBreakdown.length >= 2 && (
             <Card className="mb-6">
-              <CardHeader><CardTitle>Rendimiento por tipo de contenido</CardTitle></CardHeader>
-              <div className="overflow-x-auto">
+              <div
+                className="flex items-center justify-between cursor-pointer select-none"
+                onClick={() => setTypeBreakdownOpen(o => !o)}
+              >
+                <span className="text-sm font-semibold text-gray-700">Rendimiento por tipo de contenido</span>
+                <span className="text-gray-400">{typeBreakdownOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</span>
+              </div>
+              {typeBreakdownOpen && <div className="overflow-x-auto mt-4">
                 {compareMode && prevStats ? (
                   <table className="w-full text-sm">
                     <thead>
@@ -1158,7 +1047,7 @@ export default function InstagramPage() {
                     </tbody>
                   </table>
                 )}
-              </div>
+              </div>}
             </Card>
           )}
 
@@ -1228,6 +1117,100 @@ export default function InstagramPage() {
                     <div className="mt-3 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
                       {viewsDist.insight}
                     </div>
+                  )}
+                </div>
+              )}
+            </Card>
+          )}
+
+          {/* Colaboradores comparison (all-time, 2+ accounts required) */}
+          {collabComparison.length >= 2 && (
+            <Card className="mb-6">
+              <div
+                className="flex items-center justify-between cursor-pointer select-none"
+                onClick={() => setCollabsOpen(o => !o)}
+              >
+                <span className="text-sm font-semibold text-gray-700">Colaboradores</span>
+                <span className="text-gray-400">{collabsOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</span>
+              </div>
+              {collabsOpen && (
+                <div className="mt-3">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-100">
+                          <th className="text-left py-2 px-3 text-xs font-medium text-gray-400">Colaborador</th>
+                          <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Collabs</th>
+                          <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Views promedio</th>
+                          <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">ER% promedio</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {collabComparison.map(row => (
+                          <>
+                            <tr
+                              key={row.account}
+                              className="border-b border-gray-50 hover:bg-orange-50 cursor-pointer select-none"
+                              onClick={() => handleCollabExpand(row.account)}
+                            >
+                              <td className="py-2 px-3 font-medium text-orange-600 flex items-center gap-1">
+                                {expandedCollab === row.account ? <ChevronUp size={13} className="text-gray-400 shrink-0" /> : <ChevronDown size={13} className="text-gray-400 shrink-0" />}
+                                {row.account}
+                              </td>
+                              <td className="py-2 px-3 text-right text-gray-700">{row.count}</td>
+                              <td className="py-2 px-3 text-right font-medium">{formatNumber(Math.round(row.avgViews))}</td>
+                              <td className="py-2 px-3 text-right text-gray-600">{formatPercent(row.avgER)}</td>
+                            </tr>
+                            {expandedCollab === row.account && (
+                              <tr key={`${row.account}-detail`}>
+                                <td colSpan={4} className="px-3 pb-3 pt-1 bg-orange-50/60">
+                                  {loadingCollab === row.account ? (
+                                    <div className="text-xs text-gray-400 py-2">Cargando posts...</div>
+                                  ) : (
+                                    <table className="w-full text-xs">
+                                      <thead>
+                                        <tr className="border-b border-orange-100">
+                                          <th className="text-left py-1.5 px-2 font-medium text-gray-400">#</th>
+                                          <th className="text-left py-1.5 px-2 font-medium text-gray-400">Descripción</th>
+                                          <th className="text-left py-1.5 px-2 font-medium text-gray-400">Mes</th>
+                                          <th className="text-right py-1.5 px-2 font-medium text-gray-400">Views</th>
+                                          <th className="text-right py-1.5 px-2 font-medium text-gray-400">ER%</th>
+                                          <th className="py-1.5 px-2 w-6" />
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {(collabPostsMap[row.account] ?? []).map((p, idx) => (
+                                          <tr key={p.id} className="border-b border-orange-50 last:border-0">
+                                            <td className="py-1.5 px-2 text-gray-400">{idx + 1}</td>
+                                            <td className="py-1.5 px-2 text-gray-700 max-w-[200px] truncate">{p.description || '—'}</td>
+                                            <td className="py-1.5 px-2 text-gray-500 whitespace-nowrap">{shortMonthLabel(p.year, p.month)}</td>
+                                            <td className="py-1.5 px-2 text-right font-medium">{formatNumber(p.views)}</td>
+                                            <td className="py-1.5 px-2 text-right text-emerald-600">{formatPercent(erForPost(p))}</td>
+                                            <td className="py-1.5 px-2 text-right">
+                                              {p.permalink && !p.permalink.startsWith('manual:')
+                                                ? <a href={p.permalink} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 inline-flex"><ExternalLink size={12} /></a>
+                                                : null}
+                                            </td>
+                                          </tr>
+                                        ))}
+                                        {(collabPostsMap[row.account] ?? []).length === 0 && (
+                                          <tr><td colSpan={6} className="py-3 text-center text-gray-400">Sin posts registrados</td></tr>
+                                        )}
+                                      </tbody>
+                                    </table>
+                                  )}
+                                </td>
+                              </tr>
+                            )}
+                          </>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {collabWithout > 0 && (
+                    <p className="text-xs text-gray-400 mt-2 px-1">
+                      {collabWithout} collab{collabWithout !== 1 ? 's' : ''} sin cuenta registrada no aparece{collabWithout !== 1 ? 'n' : ''} en esta tabla.
+                    </p>
                   )}
                 </div>
               )}
@@ -1451,108 +1434,131 @@ export default function InstagramPage() {
             </div>
           </Card>
 
-          {/* Colaboradores comparison (all-time, 2+ accounts required) */}
-          {collabComparison.length >= 2 && (
-            <Card>
-              <div
-                className="flex items-center justify-between cursor-pointer select-none"
-                onClick={() => setCollabsOpen(o => !o)}
-              >
-                <CardTitle>Colaboradores</CardTitle>
-                <span className="text-gray-400">{collabsOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</span>
+          {/* External collabs section — collapsible, at bottom */}
+          <Card className="mt-6 border-l-4 border-l-orange-400">
+            <div
+              className="flex items-center justify-between cursor-pointer select-none"
+              onClick={() => setExtCollabOpen(o => !o)}
+            >
+              <div>
+                <span className="text-sm font-semibold text-gray-700">Collabs externos</span>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Contenidos subidos por influencers donde Seeds figura como colaborador. Sus views se suman automáticamente al total.
+                </p>
               </div>
-              {collabsOpen && (
-                <div className="mt-3">
+              <div className="flex items-center gap-3 shrink-0">
+                <button onClick={e => { e.stopPropagation(); setShowAddCollabForm(v => !v) }}
+                  className="presentation-hide flex items-center gap-1 text-xs bg-orange-500 text-white px-3 py-1 rounded-lg font-medium hover:bg-orange-400">
+                  <Plus size={13} /> Agregar collab
+                </button>
+                <span className="text-gray-400">{extCollabOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</span>
+              </div>
+            </div>
+            {extCollabOpen && (
+              <div className="mt-4">
+                {showAddCollabForm && (
+                  <div className="presentation-hide bg-orange-50 rounded-xl p-4 mb-4 border border-orange-200">
+                    <div className="text-sm font-medium text-gray-700 mb-3">Nuevo contenido collab externo</div>
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                      <div className="col-span-2">
+                        <label className="text-xs text-gray-500 block mb-1">Descripción / título del post</label>
+                        <input type="text" placeholder="Descripción del contenido"
+                          value={newCollab.description} onChange={e => setNewCollab(v => ({ ...v, description: e.target.value }))}
+                          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 block mb-1">Cuenta del influencer</label>
+                        <input type="text" placeholder="@patriciajebsen"
+                          value={newCollab.collab_account} onChange={e => setNewCollab(v => ({ ...v, collab_account: e.target.value }))}
+                          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 block mb-1">Fecha</label>
+                        <input type="date" value={newCollab.post_date} onChange={e => setNewCollab(v => ({ ...v, post_date: e.target.value }))}
+                          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 block mb-1">Views</label>
+                        <input type="number" value={newCollab.views} onChange={e => setNewCollab(v => ({ ...v, views: e.target.value }))}
+                          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 block mb-1">Likes</label>
+                        <input type="number" value={newCollab.likes} onChange={e => setNewCollab(v => ({ ...v, likes: e.target.value }))}
+                          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 block mb-1">Comentarios</label>
+                        <input type="number" value={newCollab.comments} onChange={e => setNewCollab(v => ({ ...v, comments: e.target.value }))}
+                          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-500 block mb-1">Link del post</label>
+                        <input type="text" placeholder="https://instagram.com/..."
+                          value={newCollab.permalink} onChange={e => setNewCollab(v => ({ ...v, permalink: e.target.value }))}
+                          className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
+                      </div>
+                    </div>
+                    <div className="flex gap-2 mt-3">
+                      <button onClick={() => savePost(true)} disabled={saving}
+                        className="bg-orange-500 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-orange-400 disabled:opacity-50">
+                        {saving ? 'Guardando...' : 'Guardar collab'}
+                      </button>
+                      <button onClick={() => setShowAddCollabForm(false)} className="text-sm text-gray-500 px-3 py-1.5 hover:text-gray-700">Cancelar</button>
+                    </div>
+                  </div>
+                )}
+                {externalCollabs.length === 0 && !showAddCollabForm ? (
+                  <p className="text-sm text-gray-400 py-2">No hay collabs externos cargados para este mes.</p>
+                ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-gray-100">
-                          <th className="text-left py-2 px-3 text-xs font-medium text-gray-400">Colaborador</th>
-                          <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Collabs</th>
-                          <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Views promedio</th>
-                          <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">ER% promedio</th>
-                          <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Score</th>
+                          <th className="text-left py-2 px-2 text-xs font-medium text-gray-400">Cuenta</th>
+                          <th className="text-left py-2 px-2 text-xs font-medium text-gray-400">Descripción</th>
+                          <th className="text-left py-2 px-2 text-xs font-medium text-gray-400">Fecha</th>
+                          <th className="text-right py-2 px-2 text-xs font-medium text-gray-400">Views</th>
+                          <th className="text-right py-2 px-2 text-xs font-medium text-gray-400">Likes</th>
+                          <th className="text-right py-2 px-2 text-xs font-medium text-gray-400">Link</th>
+                          <th className="py-2 px-2 w-8" />
                         </tr>
                       </thead>
                       <tbody>
-                        {collabComparison.map(row => (
-                          <>
-                            <tr
-                              key={row.account}
-                              className="border-b border-gray-50 hover:bg-orange-50 cursor-pointer select-none"
-                              onClick={() => handleCollabExpand(row.account)}
-                            >
-                              <td className="py-2 px-3 font-medium text-orange-600 flex items-center gap-1">
-                                {expandedCollab === row.account ? <ChevronUp size={13} className="text-gray-400 shrink-0" /> : <ChevronDown size={13} className="text-gray-400 shrink-0" />}
-                                {row.account}
-                              </td>
-                              <td className="py-2 px-3 text-right text-gray-700">{row.count}</td>
-                              <td className="py-2 px-3 text-right font-medium">{formatNumber(Math.round(row.avgViews))}</td>
-                              <td className="py-2 px-3 text-right text-gray-600">{formatPercent(row.avgER)}</td>
-                              <td className="py-2 px-3 text-right">
-                                {(() => {
-                                  const s = collabScores[row.account]
-                                  if (s === undefined) return '—'
-                                  const cls = s >= 80 ? 'text-emerald-600' : s >= 60 ? 'text-green-600' : s >= 40 ? 'text-amber-600' : 'text-red-500'
-                                  return <span className={`font-bold ${cls}`}>{s}</span>
-                                })()}
-                              </td>
-                            </tr>
-                            {expandedCollab === row.account && (
-                              <tr key={`${row.account}-detail`}>
-                                <td colSpan={5} className="px-3 pb-3 pt-1 bg-orange-50/60">
-                                  {loadingCollab === row.account ? (
-                                    <div className="text-xs text-gray-400 py-2">Cargando posts...</div>
-                                  ) : (
-                                    <table className="w-full text-xs">
-                                      <thead>
-                                        <tr className="border-b border-orange-100">
-                                          <th className="text-left py-1.5 px-2 font-medium text-gray-400">#</th>
-                                          <th className="text-left py-1.5 px-2 font-medium text-gray-400">Descripción</th>
-                                          <th className="text-left py-1.5 px-2 font-medium text-gray-400">Mes</th>
-                                          <th className="text-right py-1.5 px-2 font-medium text-gray-400">Views</th>
-                                          <th className="text-right py-1.5 px-2 font-medium text-gray-400">ER%</th>
-                                          <th className="py-1.5 px-2 w-6" />
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {(collabPostsMap[row.account] ?? []).map((p, idx) => (
-                                          <tr key={p.id} className="border-b border-orange-50 last:border-0">
-                                            <td className="py-1.5 px-2 text-gray-400">{idx + 1}</td>
-                                            <td className="py-1.5 px-2 text-gray-700 max-w-[200px] truncate">{p.description || '—'}</td>
-                                            <td className="py-1.5 px-2 text-gray-500 whitespace-nowrap">{shortMonthLabel(p.year, p.month)}</td>
-                                            <td className="py-1.5 px-2 text-right font-medium">{formatNumber(p.views)}</td>
-                                            <td className="py-1.5 px-2 text-right text-emerald-600">{formatPercent(erForPost(p))}</td>
-                                            <td className="py-1.5 px-2 text-right">
-                                              {p.permalink && !p.permalink.startsWith('manual:')
-                                                ? <a href={p.permalink} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 inline-flex"><ExternalLink size={12} /></a>
-                                                : null}
-                                            </td>
-                                          </tr>
-                                        ))}
-                                        {(collabPostsMap[row.account] ?? []).length === 0 && (
-                                          <tr><td colSpan={6} className="py-3 text-center text-gray-400">Sin posts registrados</td></tr>
-                                        )}
-                                      </tbody>
-                                    </table>
-                                  )}
-                                </td>
-                              </tr>
-                            )}
-                          </>
+                        {externalCollabs.map(post => (
+                          <tr key={post.id} className="border-b border-gray-50 hover:bg-orange-50 group">
+                            <td className="py-2 px-2">
+                              <span className="text-xs font-medium text-orange-600">{post.collab_account || '—'}</span>
+                            </td>
+                            <td className="py-2 px-2 text-gray-700 max-w-xs truncate">{post.description || '—'}</td>
+                            <td className="py-2 px-2 text-gray-500 whitespace-nowrap">{post.post_date ?? '—'}</td>
+                            <td className="py-2 px-2 text-right font-medium">{formatNumber(post.views)}</td>
+                            <td className="py-2 px-2 text-right text-gray-600">{formatNumber(post.likes)}</td>
+                            <td className="py-2 px-2 text-right">
+                              {post.permalink
+                                ? <a href={post.permalink} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 inline-flex"><ExternalLink size={14} /></a>
+                                : '—'}
+                            </td>
+                            <td className="py-2 px-2 text-right">
+                              <button onClick={() => handleDelete(post.id)}
+                                className="text-gray-200 hover:text-red-500 group-hover:text-gray-400 transition-colors">
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          </tr>
                         ))}
+                        <tr className="bg-orange-50">
+                          <td colSpan={3} className="py-2 px-2 text-xs font-semibold text-orange-700">Total collabs externos</td>
+                          <td className="py-2 px-2 text-right text-sm font-bold text-orange-700">{formatNumber(collabViewsSum)}</td>
+                          <td colSpan={3} />
+                        </tr>
                       </tbody>
                     </table>
                   </div>
-                  {collabWithout > 0 && (
-                    <p className="text-xs text-gray-400 mt-2 px-1">
-                      {collabWithout} collab{collabWithout !== 1 ? 's' : ''} sin cuenta registrada no aparece{collabWithout !== 1 ? 'n' : ''} en esta tabla.
-                    </p>
-                  )}
-                </div>
-              )}
-            </Card>
-          )}
+                )}
+              </div>
+            )}
+          </Card>
         </>
       )}
     </div>
