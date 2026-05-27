@@ -123,6 +123,7 @@ export default function InstagramPage() {
   const [featuredFormPostId, setFeaturedFormPostId] = useState<string | null>(null)
   const [featuredNote, setFeaturedNote] = useState('')
   const [savingFeatured, setSavingFeatured] = useState(false)
+  const [featuredError, setFeaturedError] = useState<string | null>(null)
   const [prevStats, setPrevStats] = useState<InstagramStats | null>(null)
   const [loadingCompare, setLoadingCompare] = useState(false)
   const [erTypeHistory, setErTypeHistory] = useState<Awaited<ReturnType<typeof getInstagramErByTypeHistory>>>([])
@@ -595,7 +596,7 @@ export default function InstagramPage() {
   const chartCardCls = 'bg-white rounded-2xl border border-gray-100 p-4 shadow-sm'
 
   function isFeaturedId(post: InstagramPost): string | null {
-    if (!post.permalink || post.permalink.startsWith('manual:')) return null
+    if (!post.permalink) return null
     return featuredItems.find(f => f.post_url === post.permalink)?.id ?? null
   }
 
@@ -607,8 +608,9 @@ export default function InstagramPage() {
   async function handleSaveFeature(post: InstagramPost) {
     if (!featuredNote.trim()) return
     setSavingFeatured(true)
+    setFeaturedError(null)
     const er = erForPost(post)
-    const { data } = await addFeaturedContent({
+    const { data, error } = await addFeaturedContent({
       year, month,
       channel: 'instagram',
       post_url: post.permalink || null,
@@ -617,10 +619,14 @@ export default function InstagramPage() {
       er_pct: er > 0 ? +er.toFixed(2) : null,
       editorial_note: featuredNote.trim(),
     })
-    if (data) setFeaturedItems(items => [...items, { id: data.id, post_url: data.post_url }])
+    setSavingFeatured(false)
+    if (error || !data) {
+      setFeaturedError((error as { message?: string })?.message ?? 'No se pudo guardar. Intentá de nuevo.')
+      return
+    }
+    setFeaturedItems(items => [...items, { id: data.id, post_url: data.post_url }])
     setFeaturedFormPostId(null)
     setFeaturedNote('')
-    setSavingFeatured(false)
   }
 
   return (
@@ -1403,25 +1409,30 @@ export default function InstagramPage() {
                     {featuredFormPostId === post.id && (
                       <tr>
                         <td colSpan={11} className="px-3 pb-3 pt-1.5 bg-amber-50 border-b border-amber-100">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-medium text-amber-700 whitespace-nowrap">Nota editorial</span>
-                            <input
-                              type="text"
-                              placeholder="¿Por qué destacar este contenido?"
-                              value={featuredNote}
-                              onChange={e => setFeaturedNote(e.target.value)}
-                              onKeyDown={e => e.key === 'Enter' && handleSaveFeature(post)}
-                              className="flex-1 border border-amber-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-amber-400"
-                              autoFocus
-                            />
-                            <button
-                              onClick={() => handleSaveFeature(post)}
-                              disabled={!featuredNote.trim() || savingFeatured}
-                              className="text-xs bg-amber-500 text-white px-3 py-1 rounded-lg font-medium hover:bg-amber-400 disabled:opacity-50 whitespace-nowrap"
-                            >
-                              {savingFeatured ? '...' : 'Destacar'}
-                            </button>
-                            <button onClick={() => { setFeaturedFormPostId(null); setFeaturedNote('') }} className="text-xs text-gray-500 hover:text-gray-700">Cancelar</button>
+                          <div className="flex flex-col gap-1.5">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-medium text-amber-700 whitespace-nowrap">Nota editorial</span>
+                              <input
+                                type="text"
+                                placeholder="¿Por qué destacar este contenido?"
+                                value={featuredNote}
+                                onChange={e => { setFeaturedNote(e.target.value); setFeaturedError(null) }}
+                                onKeyDown={e => e.key === 'Enter' && handleSaveFeature(post)}
+                                className="flex-1 border border-amber-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-amber-400"
+                                autoFocus
+                              />
+                              <button
+                                onClick={() => handleSaveFeature(post)}
+                                disabled={!featuredNote.trim() || savingFeatured}
+                                className="text-xs bg-amber-500 text-white px-3 py-1 rounded-lg font-medium hover:bg-amber-400 disabled:opacity-50 whitespace-nowrap"
+                              >
+                                {savingFeatured ? '...' : 'Destacar'}
+                              </button>
+                              <button onClick={() => { setFeaturedFormPostId(null); setFeaturedNote(''); setFeaturedError(null) }} className="text-xs text-gray-500 hover:text-gray-700">Cancelar</button>
+                            </div>
+                            {featuredError && (
+                              <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-2 py-1">{featuredError}</div>
+                            )}
                           </div>
                         </td>
                       </tr>
