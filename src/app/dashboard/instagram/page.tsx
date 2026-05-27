@@ -98,6 +98,7 @@ export default function InstagramPage() {
   const [newFollowers, setNewFollowers] = useState('')
   const [viewsApp, setViewsApp] = useState('')      // from Meta app overview
   const [reachApp, setReachApp] = useState('')       // accounts reached
+  const [interactionsApp, setInteractionsApp] = useState('')  // total interactions from Meta app
 
   // New regular post
   const [newPost, setNewPost] = useState({ ...emptyNewPost, type: 'Reel' as InstagramPost['type'] })
@@ -166,6 +167,7 @@ export default function InstagramPage() {
       setNewFollowers(String(data.monthly?.new_followers ?? ''))
       setViewsApp(String(data.monthly?.total_views_manual ?? ''))
       setReachApp(String(data.monthly?.total_reach_manual ?? ''))
+      setInteractionsApp(String((data.monthly as Record<string,number> | null)?.total_interactions ?? ''))
     } catch (err) {
       setError((err as { message?: string })?.message ?? 'Error al cargar datos de Instagram')
     } finally {
@@ -184,6 +186,7 @@ export default function InstagramPage() {
       new_followers: parseInt(newFollowers) || 0,
       total_views_manual: parseInt(viewsApp) || 0,
       total_reach_manual: parseInt(reachApp) || 0,
+      total_interactions: parseInt(interactionsApp) || undefined,
     })
     clearCache()
     await load()
@@ -951,6 +954,14 @@ export default function InstagramPage() {
                 <div>
                   <label className="text-xs text-gray-500 block mb-1">Nuevos seguidores</label>
                   <input type="number" value={newFollowers} onChange={e => setNewFollowers(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">
+                    Interacciones totales (app)
+                    <span className="ml-1 text-gray-400 cursor-help" title="Total de interacciones del mes que muestra Meta. Si está vacío, se calcula automáticamente sumando likes+comentarios+shares+guardados de cada post.">ⓘ</span>
+                  </label>
+                  <input type="number" value={interactionsApp} onChange={e => setInteractionsApp(e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                 </div>
                 <div className="col-span-2 lg:col-span-4 flex gap-2 pt-1">
