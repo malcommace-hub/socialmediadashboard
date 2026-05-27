@@ -38,7 +38,7 @@ export async function getInstagramStats(filter: MonthlyFilter) {
   const storedAvgER = (monthly as Record<string, number | null> | null)?.avg_er
   const avgER = storedAvgER != null
     ? storedAvgER as number
-    : computeAvgER(posts.map(p => ({ impressions: p.impressions, interactions: (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0) + (p.saves ?? 0) })))
+    : computeAvgER(posts.filter(p => p.type !== 'Story').map(p => ({ impressions: p.impressions, interactions: (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0) + (p.saves ?? 0) })))
 
   return {
     monthly,
