@@ -1047,25 +1047,11 @@ export default function OverviewPage() {
               dotColor="bg-blue-500"
             />
             <KpiCard
-              label="Instagram ER"
-              value={current?.igER ? formatPercent(current.igER) : '—'}
-              trend={current?.igER && prev?.igER ? pctChange(current.igER, prev.igER) : null}
-              dotColor="bg-rose-500"
-            />
-            <KpiCard
               label="Newsletter views"
               value={current?.newsletterViews ? formatNumber(current.newsletterViews) : '—'}
               trend={current?.newsletterViews && prev?.newsletterViews ? pctChange(current.newsletterViews, prev.newsletterViews) : null}
               dotColor="bg-amber-500"
             />
-            {curEfficiency !== null && (
-              <KpiCard
-                label="Eficiencia (impr/post)"
-                value={formatNumber(curEfficiency)}
-                trend={curEfficiency !== null && prevEfficiency !== null ? pctChange(curEfficiency, prevEfficiency) : null}
-                dotColor="bg-teal-500"
-              />
-            )}
           </div>
 
           {/* Impressions — full width */}

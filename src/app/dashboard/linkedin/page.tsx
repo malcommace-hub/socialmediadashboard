@@ -199,11 +199,6 @@ export default function LinkedInPage() {
     const pm = month === 1 ? { y: year - 1, m: 12 } : { y: year, m: month - 1 }
     return history.find(d => d.year === pm.y && d.month === pm.m)
   })()
-  const qPrevH = (() => {
-    let m = month - 3, y = year
-    if (m <= 0) { m += 12; y-- }
-    return history.find(d => d.year === y && d.month === m)
-  })()
 
   const impChart = useMemo(() => {
     const vals = histLast.map(d => d.impressions)
@@ -353,11 +348,11 @@ export default function LinkedInPage() {
           {/* KPI cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             {[
-              { label: 'Impresiones', val: kpiImpressions, prev: prevH?.impressions, qPrev: qPrevH?.impressions, fmt: formatNumber },
-              { label: 'Interacciones', val: kpiInteractions, prev: prevH?.interactions, qPrev: qPrevH?.interactions, fmt: formatNumber },
-              { label: 'Engagement %', val: kpiER, prev: prevH?.er, qPrev: qPrevH?.er, fmt: (v: number) => formatPercent(v) },
-              { label: 'Nuevos seguidores', val: stats?.monthly?.new_followers ?? 0, prev: prevH?.newFollowers, qPrev: qPrevH?.newFollowers, fmt: formatNumber },
-            ].map(({ label, val, prev, qPrev, fmt }) => (
+              { label: 'Impresiones', val: kpiImpressions, prev: prevH?.impressions, fmt: formatNumber },
+              { label: 'Interacciones', val: kpiInteractions, prev: prevH?.interactions, fmt: formatNumber },
+              { label: 'Engagement %', val: kpiER, prev: prevH?.er, fmt: (v: number) => formatPercent(v) },
+              { label: 'Nuevos seguidores', val: stats?.monthly?.new_followers ?? 0, prev: prevH?.newFollowers, fmt: formatNumber },
+            ].map(({ label, val, prev, fmt }) => (
               <div key={label} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
                 <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">{label}</div>
                 <div className="text-2xl font-bold text-gray-900">{fmt(val)}</div>
@@ -365,10 +360,6 @@ export default function LinkedInPage() {
                   <span className="text-xs text-gray-400">
                     <TrendBadge value={val} prev={prev} />
                     <span className="ml-1">vs mes ant.</span>
-                  </span>
-                  <span className="text-xs text-gray-400">
-                    <TrendBadge value={val} prev={qPrev} />
-                    <span className="ml-1">vs Q ant.</span>
                   </span>
                 </div>
               </div>
