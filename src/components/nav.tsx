@@ -15,6 +15,7 @@ import {
   Sparkles,
   Maximize2,
   Minimize2,
+  Magnet,
 } from 'lucide-react'
 
 const links = [
@@ -23,6 +24,7 @@ const links = [
   { href: '/dashboard/linkedin', label: 'LinkedIn', icon: Briefcase },
   { href: '/dashboard/tiktok', label: 'TikTok & Shorts', icon: Music2 },
   { href: '/dashboard/medios', label: 'Newsletter & Web', icon: Globe },
+  { href: '/dashboard/attraction', label: 'Attraction', icon: Magnet },
   { href: '/dashboard/objectives', label: 'Objetivos Q', icon: Target },
   { href: '/dashboard/highlights', label: 'Destacados', icon: Star },
   { href: '/dashboard/insights', label: 'Insights', icon: Sparkles },
