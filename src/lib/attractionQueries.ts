@@ -50,13 +50,13 @@ export async function getAttractionWeekData(weekId: string): Promise<{
   }
 }
 
-export async function createAttractionWeek(week_date: string, notes?: string | null): Promise<AttractionWeek | null> {
-  const { data } = await supabase
+export async function createAttractionWeek(week_date: string, notes?: string | null): Promise<{ data: AttractionWeek | null; error: string | null }> {
+  const { data, error } = await supabase
     .from('attraction_weeks')
     .insert({ week_date, notes: notes ?? null })
     .select()
     .single()
-  return data as AttractionWeek | null
+  return { data: data as AttractionWeek | null, error: error ? error.message : null }
 }
 
 export async function deleteAttractionWeek(id: string) {

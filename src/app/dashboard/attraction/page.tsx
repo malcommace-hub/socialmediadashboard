@@ -35,6 +35,7 @@ export default function AttractionPage() {
   const [showNewWeekForm, setShowNewWeekForm] = useState(false)
   const [newWeekDate, setNewWeekDate] = useState('')
   const [savingWeek, setSavingWeek] = useState(false)
+  const [weekError, setWeekError] = useState<string | null>(null)
 
   // New opportunity form
   const [showAddOpp, setShowAddOpp] = useState(false)
@@ -108,17 +109,20 @@ export default function AttractionPage() {
   async function handleCreateWeek() {
     if (!newWeekDate) return
     setSavingWeek(true)
-    const week = await createAttractionWeek(newWeekDate)
-    if (week) {
-      const updated = await loadWeeks()
-      const idx = updated.findIndex(w => w.id === week.id)
-      setWeekIdx(idx >= 0 ? idx : 0)
-      setOpportunities([])
-      setVideos([])
+    setWeekError(null)
+    const { data: week, error } = await createAttractionWeek(newWeekDate)
+    setSavingWeek(false)
+    if (error || !week) {
+      setWeekError(error ?? 'No se pudo crear la semana. Verificá que las tablas estén creadas en Supabase.')
+      return
     }
+    const updated = await loadWeeks()
+    const idx = updated.findIndex(w => w.id === week.id)
+    setWeekIdx(idx >= 0 ? idx : 0)
+    setOpportunities([])
+    setVideos([])
     setShowNewWeekForm(false)
     setNewWeekDate('')
-    setSavingWeek(false)
   }
 
   async function handleDeleteWeek() {
@@ -263,8 +267,13 @@ export default function AttractionPage() {
             >
               {savingWeek ? 'Creando...' : 'Crear semana'}
             </button>
-            <button onClick={() => setShowNewWeekForm(false)} className="text-sm text-gray-500 hover:text-gray-700">Cancelar</button>
+            <button onClick={() => { setShowNewWeekForm(false); setWeekError(null) }} className="text-sm text-gray-500 hover:text-gray-700">Cancelar</button>
           </div>
+          {weekError && (
+            <div className="mt-3 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              ⚠ {weekError}
+            </div>
+          )}
         </Card>
       )}
 
