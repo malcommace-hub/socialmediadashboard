@@ -3,7 +3,7 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { Card, CardTitle } from '@/components/ui/card'
 import { ChevronLeft, ChevronRight, Plus, Trash2, PencilLine, Check, X, ChevronDown, ChevronUp } from 'lucide-react'
 import {
-  getAttractionWeeks, getAttractionWeekData, createAttractionWeek, deleteAttractionWeek,
+  getAttractionWeeks, getAttractionWeekData, createAttractionWeek, updateAttractionWeek, deleteAttractionWeek,
   addAttractionOpportunity, updateAttractionOpportunity, deleteAttractionOpportunity,
   addAttractionVideo, updateAttractionVideo, deleteAttractionVideo,
   type AttractionWeek, type AttractionOpportunity, type AttractionVideo,
@@ -61,6 +61,10 @@ export default function AttractionPage() {
   const [editVideoTitle, setEditVideoTitle] = useState('')
   const [editVideoViews, setEditVideoViews] = useState('')
 
+  // Inline editing — careersite registrations
+  const [editingCareersite, setEditingCareersite] = useState(false)
+  const [editCareersiteVal, setEditCareersiteVal] = useState('')
+
   const currentWeek = weeks[weekIdx] ?? null
 
   const loadWeeks = useCallback(async () => {
@@ -102,8 +106,14 @@ export default function AttractionPage() {
     return map
   }, [videos])
 
-  const appsConv = totalViews > 0 ? (totalApplications / totalViews) * 100 : null
-  const candidatesConv = totalApplications > 0 ? (totalCandidates / totalApplications) * 100 : null
+  const appsConv = useMemo(
+    () => totalViews > 0 ? (totalApplications / totalViews) * 100 : null,
+    [totalViews, totalApplications]
+  )
+  const candidatesConv = useMemo(
+    () => totalApplications > 0 ? (totalCandidates / totalApplications) * 100 : null,
+    [totalApplications, totalCandidates]
+  )
 
   // ── Handlers ──────────────────────────────────────
   async function handleCreateWeek() {
@@ -198,6 +208,14 @@ export default function AttractionPage() {
     await updateAttractionVideo(video.id, updates)
     setVideos(prev => prev.map(v => v.id === video.id ? { ...v, ...updates } : v))
     setEditingVideoId(null)
+  }
+
+  async function saveCareersite() {
+    if (!currentWeek) return
+    const val = parseInt(editCareersiteVal) || 0
+    await updateAttractionWeek(currentWeek.id, { careersite_registrations: val })
+    setWeeks(prev => prev.map(w => w.id === currentWeek.id ? { ...w, careersite_registrations: val } : w))
+    setEditingCareersite(false)
   }
 
   // ── Render ────────────────────────────────────────
@@ -350,6 +368,42 @@ export default function AttractionPage() {
                 <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">✅ Candidatos</div>
                 <div className="text-3xl font-bold text-emerald-600">{formatNumber(totalCandidates)}</div>
                 <div className="text-xs text-gray-400 mt-1.5">presentados a empresas</div>
+              </div>
+
+              {/* Divider */}
+              <div className="w-px bg-gray-100 self-stretch mx-1" />
+
+              {/* Careersite Registrations */}
+              <div className="flex-1 bg-white rounded-2xl border border-gray-100 p-5 shadow-sm relative group">
+                <div className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">🎯 Reg. Careersite</div>
+                {editingCareersite ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      value={editCareersiteVal}
+                      onChange={e => setEditCareersiteVal(e.target.value)}
+                      autoFocus
+                      onKeyDown={e => { if (e.key === 'Enter') saveCareersite(); if (e.key === 'Escape') setEditingCareersite(false) }}
+                      className="w-24 border border-gray-300 rounded-lg px-2 py-1 text-2xl font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                    <div className="flex flex-col gap-1">
+                      <button onClick={saveCareersite} className="text-emerald-500 hover:text-emerald-700"><Check size={14} /></button>
+                      <button onClick={() => setEditingCareersite(false)} className="text-gray-400 hover:text-gray-600"><X size={14} /></button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-2">
+                    <div className="text-3xl font-bold text-gray-900">{formatNumber(currentWeek.careersite_registrations)}</div>
+                    <button
+                      onClick={() => { setEditingCareersite(true); setEditCareersiteVal(String(currentWeek.careersite_registrations)) }}
+                      className="mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-gray-600"
+                      title="Editar"
+                    >
+                      <PencilLine size={13} />
+                    </button>
+                  </div>
+                )}
+                <div className="text-xs text-gray-400 mt-1.5">source=careersite</div>
               </div>
             </div>
           </div>

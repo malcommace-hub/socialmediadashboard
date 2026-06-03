@@ -4,6 +4,7 @@ export type AttractionWeek = {
   id: string
   week_date: string
   notes: string | null
+  careersite_registrations: number
   created_at: string
 }
 
@@ -57,6 +58,13 @@ export async function createAttractionWeek(week_date: string, notes?: string | n
     .select()
     .single()
   return { data: data as AttractionWeek | null, error: error ? error.message : null }
+}
+
+export async function updateAttractionWeek(
+  id: string,
+  updates: Partial<Pick<AttractionWeek, 'notes' | 'careersite_registrations'>>
+) {
+  return supabase.from('attraction_weeks').update(updates).eq('id', id).select().single()
 }
 
 export async function deleteAttractionWeek(id: string) {
