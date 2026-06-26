@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react'
 import { Eye, Send, UserCheck, CheckCircle2, FileText, TrendingUp, Loader2 } from 'lucide-react'
 import { getWeeks, weekLabel, type SupplyWeekFull } from '@/lib/supply'
 import { formatNumber, formatPercent } from '@/lib/utils'
-import { FunnelChart, type ChartPoint } from '@/components/supply/FunnelChart'
-import { WeekRow } from '@/components/supply/WeekRow'
+import { FunnelChart, type ChartPoint } from '@/components/FunnelChart'
+import { WeekRow } from '@/components/WeekRow'
 
 function GlobalStat({ icon: Icon, value, label, accent }: { icon: React.ElementType; value: string; label: string; accent: string }) {
   return (
@@ -69,7 +69,7 @@ export default function SupplyOverview() {
       {weeks.length === 0 ? (
         <div className="rounded-2xl bg-[#141929] border border-white/5 p-10 text-center">
           <p className="text-gray-400">Todavía no hay datos cargados.</p>
-          <a href="/supply/cargar" className="inline-block mt-3 text-emerald-400 hover:text-emerald-300 text-sm font-medium">
+          <a href="/cargar" className="inline-block mt-3 text-emerald-400 hover:text-emerald-300 text-sm font-medium">
             Cargar la primera semana →
           </a>
         </div>

@@ -15,7 +15,6 @@ import {
   Sparkles,
   Maximize2,
   Minimize2,
-  Sprout,
 } from 'lucide-react'
 
 const links = [
@@ -106,12 +105,6 @@ export function Nav() {
       </nav>
 
       <div className="mt-auto px-3 flex flex-col gap-2">
-        <Link
-          href="/supply"
-          className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-gray-500 hover:text-white hover:bg-gray-800 transition-colors"
-        >
-          <Sprout size={13} /> Supply Generation
-        </Link>
         <button
           onClick={togglePresenting}
           className={cn(
