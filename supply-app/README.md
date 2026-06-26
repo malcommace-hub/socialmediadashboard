@@ -22,3 +22,5 @@ Next.js 16 · React 19 · Tailwind 4 · Recharts · Supabase.
 ## Deploy
 Proyecto independiente en Vercel. Importar este repo, setear las dos variables de
 entorno y deployar. El link resultante es público (sin login).
+
+<!-- deploy: supply-app root para Vercel -->
