@@ -1,118 +1,43 @@
 @import "tailwindcss";
 
-:root {
-  --background: #f3f4f6;
-  --foreground: #111827;
+/* ── Seeds palette + theme tokens (Tailwind v4 @theme) ───────────────── */
+@theme {
+  --color-bg: #0a0e1a;
+  --color-card: #141929;
+  --color-card-2: #1b2236;
+  --color-border: #232a40;
+  --color-accent: #2ecc71;
+  --color-accent-dim: #1f8b4c;
+  --color-muted: #8a93a8;
+
+  --font-sans: var(--font-montserrat), ui-sans-serif, system-ui, sans-serif;
 }
 
+:root {
+  color-scheme: dark;
+}
+
+html,
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  background: var(--color-bg);
+  color: #ffffff;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
-/* Presentation mode — activated by ?present=1 or toggle button */
-body.presentation-mode table td,
-body.presentation-mode table th {
-  font-size: 1rem;
-  padding-top: 0.625rem;
-  padding-bottom: 0.625rem;
+/* Thin custom scrollbars (used by the horizontally-scrollable chart) */
+.scroll-slim {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
 }
-body.presentation-mode .text-2xl {
-  font-size: 1.75rem;
+.scroll-slim::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
 }
-body.presentation-mode .text-sm {
-  font-size: 0.9375rem;
+.scroll-slim::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 999px;
 }
-body.presentation-mode .bg-white.rounded-2xl {
-  padding: 1.5rem;
-}
-body.presentation-mode .presentation-hide {
-  display: none !important;
-}
-
-/* Presentation mode — table density improvements */
-body.presentation-mode table td,
-body.presentation-mode table th {
-  padding-top: 0.875rem !important;
-  padding-bottom: 0.875rem !important;
-}
-
-/* Presentation mode — hide low-value columns (link/checkbox via ph-col class) */
-body.presentation-mode .ph-col {
-  display: none !important;
-}
-
-/* Presentation mode — Recharts: larger axis labels and legend text */
-body.presentation-mode .recharts-cartesian-axis-tick text {
-  font-size: 13px !important;
-}
-body.presentation-mode .recharts-legend-item-text {
-  font-size: 13px !important;
-}
-body.presentation-mode .recharts-label {
-  font-size: 13px !important;
-}
-
-/* Impactos del mes — presentation mode enhancements */
-body.presentation-mode .featured-top-card {
-  padding: 1.5rem !important;
-}
-body.presentation-mode .featured-top-card .text-sm {
-  font-size: 1rem !important;
-  line-height: 1.5 !important;
-}
-body.presentation-mode .featured-top-card .text-xs {
-  font-size: 0.8125rem !important;
-}
-body.presentation-mode .featured-editorial-note {
-  font-size: 0.9375rem !important;
-  padding: 1rem 1.25rem !important;
-  border-width: 2px !important;
-  font-style: italic;
-}
-body.presentation-mode .featured-editorial-note .text-xs {
-  font-size: 0.75rem !important;
-  font-style: normal;
-}
-
-/* Print styles — activated by Imprimir resumen button (window.print()) */
-@media print {
-  /* Hide navigation, controls and interactive elements */
-  .print-hide,
-  aside,
-  nav {
-    display: none !important;
-  }
-
-  body {
-    background: white !important;
-    color: #111827 !important;
-    font-size: 11pt;
-  }
-
-  main {
-    padding: 0 !important;
-  }
-
-  /* Avoid page breaks inside cards */
-  .bg-white.rounded-2xl,
-  table {
-    page-break-inside: avoid;
-    break-inside: avoid;
-  }
-
-  /* Flatten shadows and borders for clean print */
-  .shadow-sm,
-  .shadow {
-    box-shadow: none !important;
-  }
-
-  a {
-    text-decoration: none !important;
-    color: inherit !important;
-  }
-
-  /* Recharts SVGs print fine — keep them */
+.scroll-slim::-webkit-scrollbar-track {
+  background: transparent;
 }

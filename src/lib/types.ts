@@ -1,170 +1,57 @@
-export interface MonthlyFilter {
-  year: number
-  month: number
+// ── Domain types for the Supply Generation dashboard ──────────────────
+
+export type Channel = "LinkedIn" | "Instagram" | "TikTok";
+export const CHANNELS: Channel[] = ["LinkedIn", "Instagram", "TikTok"];
+
+export type Seniority = "Junior" | "Semi-Senior" | "Senior";
+export const SENIORITIES: Seniority[] = ["Junior", "Semi-Senior", "Senior"];
+
+export interface Opportunity {
+  id: string;
+  week_id: string;
+  role: string;
+  company: string;
+  seniority: Seniority;
+  applications: number; // postulaciones
+  presented: number; // candidatos presentados
+  confirmed: number; // candidatos confirmados
+  date: string | null; // optional ISO date
 }
 
-// ─── Instagram ───────────────────────────────
-export interface InstagramMonthly {
-  id: string
-  year: number
-  month: number
-  total_followers: number
-  new_followers: number
-  total_views_manual: number   // views from Meta app overview (entered manually)
-  total_reach_manual: number   // accounts reached (entered manually)
+export interface Content {
+  id: string;
+  week_id: string;
+  channel: Channel;
+  title: string;
+  views: number;
+  url: string | null;
+  // ids of the opportunities that appeared in this content (m:n)
+  opportunity_ids: string[];
 }
 
-export interface InstagramPost {
-  id: string
-  year: number
-  month: number
-  post_date: string | null
-  type: 'Reel' | 'Post' | 'Collab' | 'Story'
-  description: string | null
-  views: number
-  impressions: number
-  likes: number
-  comments: number
-  shares: number
-  saves: number
-  permalink: string | null
-  collab_account: string | null
-  is_manual: boolean
+export interface Week {
+  id: string;
+  week_start: string; // ISO date of the Monday for this week
+  insights: string;
+  opportunities: Opportunity[];
+  contents: Content[];
 }
 
-export interface InstagramStats {
-  monthly: InstagramMonthly | null
-  posts: InstagramPost[]
-  totalViews: number
-  totalImpressions: number
-  totalInteractions: number
-  avgER: number
-  externalCollabViews: number  // sum of manually-added influencer-hosted collabs
-  grandTotalViews: number      // total_views_manual (app) + externalCollabViews
+// Aggregated funnel for a single week (computed, never stored).
+export interface WeekFunnel {
+  contents: number;
+  views: number;
+  applications: number;
+  presented: number;
+  confirmed: number;
 }
 
-// ─── LinkedIn ────────────────────────────────
-export interface LinkedInMonthly {
-  id: string
-  year: number
-  month: number
-  total_followers: number
-  new_followers: number
-}
-
-export interface LinkedInPost {
-  id: string
-  year: number
-  month: number
-  post_date: string | null
-  title: string | null
-  impressions: number
-  interactions: number
-  er_decimal: number
-  permalink: string | null
-  is_manual: boolean
-}
-
-export interface LinkedInStats {
-  monthly: LinkedInMonthly | null
-  posts: LinkedInPost[]
-  totalImpressions: number
-  totalInteractions: number
-  avgER: number
-}
-
-// ─── TikTok ──────────────────────────────────
-export interface TikTokMonthly {
-  id: string
-  year: number
-  month: number
-  total_followers: number
-  new_followers: number
-  total_views: number          // from Overview CSV (period total views)
-  total_interactions: number   // from Overview CSV (period total interactions)
-}
-
-export interface TikTokVideo {
-  id: string
-  year: number
-  month: number
-  video_date: string | null
-  title: string | null
-  views: number
-  likes: number
-  comments: number
-  shares: number
-  permalink: string | null
-  is_manual: boolean
-}
-
-export interface TikTokStats {
-  monthly: TikTokMonthly | null
-  videos: TikTokVideo[]
-  totalViews: number
-  totalInteractions: number
-}
-
-// ─── YouTube ─────────────────────────────────
-export interface YouTubeMonthly {
-  id: string
-  year: number
-  month: number
-  shorts_views: number
-}
-
-// ─── Newsletter ──────────────────────────────
-export interface NewsletterMonthly {
-  id: string
-  year: number
-  month: number
-  new_subscribers: number
-}
-
-export interface NewsletterEpisode {
-  id: string
-  year: number
-  month: number
-  episode_number: number | null
-  title: string | null
-  views: number
-  lead_magnet_downloads: number
-  published_date: string | null
-  url: string | null
-}
-
-// ─── Web ─────────────────────────────────────
-export interface WebMonthly {
-  id: string
-  year: number
-  month: number
-  total_sessions: number
-}
-
-export interface WebUtmSource {
-  id: string
-  year: number
-  month: number
-  source: string
-  sessions: number
-}
-
-// ─── Objectives ──────────────────────────────
-export interface Objective {
-  id: string
-  year: number
-  quarter: number
-  channel: string
-  metric: string
-  target_value: number
-}
-
-// ─── Overview ────────────────────────────────
-export interface OverviewData {
-  ig: InstagramStats
-  li: LinkedInStats
-  tt: TikTokStats
-  yt: YouTubeMonthly | null
-  web: { monthly: WebMonthly | null; utmSources: WebUtmSource[] }
-  newsletter: { monthly: NewsletterMonthly | null; episodes: NewsletterEpisode[] }
+export function computeFunnel(week: Week): WeekFunnel {
+  return {
+    contents: week.contents.length,
+    views: week.contents.reduce((s, c) => s + (c.views || 0), 0),
+    applications: week.opportunities.reduce((s, o) => s + (o.applications || 0), 0),
+    presented: week.opportunities.reduce((s, o) => s + (o.presented || 0), 0),
+    confirmed: week.opportunities.reduce((s, o) => s + (o.confirmed || 0), 0),
+  };
 }
