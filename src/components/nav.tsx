@@ -13,6 +13,7 @@ import {
   Upload,
   Star,
   Sparkles,
+  FileText,
   Maximize2,
   Minimize2,
 } from 'lucide-react'
@@ -26,6 +27,7 @@ const links = [
   { href: '/dashboard/objectives', label: 'Objetivos Q', icon: Target },
   { href: '/dashboard/highlights', label: 'Destacados', icon: Star },
   { href: '/dashboard/insights', label: 'Insights', icon: Sparkles },
+  { href: '/dashboard/report', label: 'Reporte H1', icon: FileText },
   { href: '/dashboard/upload', label: 'Cargar datos', icon: Upload },
 ]
 

@@ -400,6 +400,28 @@ export async function getInstagramCollabComparison() {
   return { comparison, withoutAccount }
 }
 
+// Compares average views across content "buckets": influencer collabs vs the
+// streaming show (newsletter episodes) vs own organic IG content (Reels/Posts).
+// All-time across loaded data — labelled as such in the report.
+export async function getContentPerformanceComparison() {
+  const [collabs, episodes, organic] = await Promise.all([
+    supabase.from('instagram_posts').select('views').eq('type', 'Collab'),
+    supabase.from('newsletter_episodes').select('views'),
+    supabase.from('instagram_posts').select('views').in('type', ['Reel', 'Post']),
+  ])
+  const agg = (rows: { views: number | null }[] | null) => {
+    const vals = (rows ?? []).map(r => r.views ?? 0)
+    const count = vals.length
+    const total = vals.reduce((a, b) => a + b, 0)
+    return { count, total, avg: count > 0 ? total / count : 0 }
+  }
+  return {
+    influencer: agg(collabs.data),
+    streaming: agg(episodes.data),
+    organic: agg(organic.data),
+  }
+}
+
 export async function getLinkedInHistory() {
   type Item = { year: number; month: number; impressions: number; interactions: number; newFollowers: number; totalFollowers: number; er: number }
   const hit = getCached<Item[]>('li-history'); if (hit) return hit
