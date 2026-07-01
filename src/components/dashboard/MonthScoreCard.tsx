@@ -100,13 +100,19 @@ export function calculateMonthScore(current: HP, history: HP[], fullHistory?: HP
 
   const nlActive = nl > 0 || (avg3Nl !== null && avg3Nl > 0)
 
-  const wReach = nlActive ? 0.30 : 0.40
-  const wEng   = nlActive ? 0.20 : 0.30
-  const wFoll  = 0.20
-  const wNl    = nlActive ? 0.20 : 0
-  const wPosts = 0.10
+  // Reach (views) is the headline metric and dominates the score: a month with
+  // lots of views is a good month, so the biggest-reach month tops the chart.
+  // The remaining weight lets the other dimensions fine-tune around it.
+  const wReach = 0.72
+  const wEng   = nlActive ? 0.08 : 0.14
+  const wFoll  = nlActive ? 0.08 : 0.09
+  const wNl    = nlActive ? 0.08 : 0
+  const wPosts = nlActive ? 0.04 : 0.05
 
-  const sReach = blendedDimScore(reach,      avg3Reach, avgFReach, benchReach)
+  // Reach is scored purely on absolute quality vs the best month ever — no
+  // momentum drag — so a flat-but-huge month (e.g. matching the record) still
+  // scores near the top instead of being penalised for not growing.
+  const sReach = benchReach != null && benchReach > 0 ? absoluteScore(reach, benchReach) : relativeDimScore(reach, avg3Reach, avgFReach)
   const sEng   = blendedDimScore(engagement, avg3Eng,   avgFEng,   benchEng)
   const sFoll  = blendedDimScore(followers,  avg3Foll,  avgFFoll,  benchFoll)
   const sNl    = nlActive ? blendedDimScore(nl, avg3Nl, avgFNl, benchNl) : 55
