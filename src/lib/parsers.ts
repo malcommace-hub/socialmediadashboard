@@ -2,16 +2,24 @@ import Papa from 'papaparse'
 import * as XLSX from 'xlsx'
 
 // ─── Instagram CSV (Meta Business Suite → Content export) ────────────────────
-// Real columns from weareseeds_ export:
-//   Post ID, Account ID, Account username, Account name, Description,
-//   Duration (sec), Publish time, Permalink, Post type, Data comment, Date,
-//   Views, Likes, Shares, Comments, Saves, Reach, Follows
+// Real columns from weareseeds_ export. Meta exports in the account's language,
+// so we accept both English and Spanish headers:
+//   EN: Post ID, Account ID, Account username, Account name, Description,
+//       Duration (sec), Publish time, Permalink, Post type, Data comment, Date,
+//       Views, Likes, Shares, Comments, Saves, Reach, Follows
+//   ES: Identificador de la publicación, Identificador de la cuenta,
+//       Nombre de usuario de la cuenta, Nombre de la cuenta, Descripción,
+//       Duración (segundos), Hora de publicación, Enlace permanente,
+//       Tipo de publicación, Comentario sobre los datos, Fecha, Visualizaciones,
+//       Me gusta, Veces que se compartió, Comentarios, Veces que se guardó,
+//       Alcance, Seguimientos
 //
 // Notes:
 //   - No "Impressions" column — only Views and Reach
 //   - We use max(Views, Reach) as the single reach/views metric
 //   - Collab posts are detected by Account username != "weareseeds_"
 //   - Publish time format: "MM/DD/YYYY HH:MM"
+//   - Headers are normalized (lowercase, accents stripped) before matching
 export interface RawInstagramRow {
   description: string
   type: 'Reel' | 'Post' | 'Collab' | 'Story'
@@ -29,7 +37,7 @@ export interface RawInstagramRow {
 function normalizeInstagramType(raw: string): 'Reel' | 'Post' | 'Collab' | 'Story' {
   const lower = raw.toLowerCase()
   if (lower.includes('reel')) return 'Reel'
-  if (lower.includes('story') || lower.includes('stories')) return 'Story'
+  if (lower.includes('story') || lower.includes('stories') || lower.includes('historia')) return 'Story'
   if (lower.includes('collab')) return 'Collab'
   return 'Post'
 }
@@ -45,35 +53,52 @@ export function parseInstagramCSV(text: string): RawInstagramRow[] {
   const result = Papa.parse<Record<string, string>>(text, {
     header: true,
     skipEmptyLines: true,
-    transformHeader: h => h.trim().toLowerCase().replace(/[\s()]/g, '_').replace(/_+/g, '_').replace(/_$/, ''),
+    // Normalize headers: lowercase, strip accents (á→a), spaces/parens → "_".
+    // Accent-stripping lets Spanish headers ("Descripción") match cleanly.
+    transformHeader: h => h.trim().toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[\s()]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, ''),
   })
 
+  // Pick the first candidate header present with a non-empty value.
+  const pick = (row: Record<string, string>, keys: string[]): string => {
+    for (const k of keys) {
+      const v = row[k]
+      if (v != null && String(v).trim() !== '') return String(v)
+    }
+    return ''
+  }
+  const num = (s: string) => parseFloat(s) || 0
+
   return result.data.map(row => {
-    const permalink    = row['permalink'] || null
-    const description  = row['description'] || ''
-    const username     = (row['account_username'] || '').toLowerCase().trim()
-    const rawType      = row['post_type'] || row['type'] || row['content_type'] || 'Post'
+    const permalink    = pick(row, ['permalink', 'enlace_permanente', 'enlace', 'url']) || null
+    const description  = pick(row, ['description', 'descripcion'])
+    const usernameRaw  = pick(row, ['account_username', 'nombre_de_usuario_de_la_cuenta'])
+    const username     = usernameRaw.toLowerCase().trim()
+    const rawType      = pick(row, ['post_type', 'tipo_de_publicacion', 'type', 'content_type']) || 'Post'
 
     // Collab = post from an account that isn't weareseeds_
     const isCollab     = username !== '' && username !== 'weareseeds_'
-    const collab_account = isCollab ? `@${row['account_username'] || username}` : null
+    const collab_account = isCollab ? `@${usernameRaw || username}` : null
     const type         = isCollab ? 'Collab' : normalizeInstagramType(rawType)
 
-    const views  = parseFloat(row['views'] || '0') || 0
-    const reach  = parseFloat(row['reach'] || '0') || 0
+    const views  = num(pick(row, ['views', 'visualizaciones']))
+    const reach  = num(pick(row, ['reach', 'alcance']))
     const maxVal = Math.max(views, reach) // unified metric as requested
+
+    const publishTime = pick(row, ['publish_time', 'hora_de_publicacion'])
 
     return {
       description,
       type,
-      post_date: row['publish_time'] ? parseDateMMDDYYYYTime(row['publish_time']) : null,
+      post_date: publishTime ? parseDateMMDDYYYYTime(publishTime) : null,
       permalink,
       impressions: maxVal,
       views: maxVal,
-      likes:    parseFloat(row['likes']    || '0') || 0,
-      comments: parseFloat(row['comments'] || '0') || 0,
-      shares:   parseFloat(row['shares']   || '0') || 0,
-      saves:    parseFloat(row['saves']    || '0') || 0,
+      likes:    num(pick(row, ['likes', 'me_gusta'])),
+      comments: num(pick(row, ['comments', 'comentarios'])),
+      shares:   num(pick(row, ['shares', 'veces_que_se_compartio'])),
+      saves:    num(pick(row, ['saves', 'veces_que_se_guardo'])),
       collab_account,
     }
   }).filter(r => r.permalink || r.description)
