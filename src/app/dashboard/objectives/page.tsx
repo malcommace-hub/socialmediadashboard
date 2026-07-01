@@ -8,14 +8,10 @@ import {
 import { formatNumber, getQuarter } from '@/lib/utils'
 import {
   ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, ReferenceLine, LabelList,
+  ResponsiveContainer, Customized, LabelList, useXAxisScale, useYAxisScale,
 } from 'recharts'
 
 // ─── Helpers ─────────────────────────────────────────────────
-
-function prevQInfo(year: number, q: number): { year: number; q: number } {
-  return q === 1 ? { year: year - 1, q: 4 } : { year, q: q - 1 }
-}
 
 function qLabel(year: number, q: number) {
   return `Q${q} ${year}`
@@ -52,25 +48,58 @@ const METRICS = [
 
 // ─── Metric Q card ───────────────────────────────────────────
 
+// Per-quarter target markers: a short dashed horizontal line drawn over each
+// bar at its own target value. Rendered via <Customized> so it can read the
+// chart's band (x) and value (y) scales through recharts hooks.
+type TickDatum = { label: string; target: number | null }
+function TargetTicks({ data, color }: { data?: TickDatum[]; color?: string }) {
+  const xScale = useXAxisScale() as (((v: string) => number | undefined) & { bandwidth?: () => number }) | undefined
+  const yScale = useYAxisScale() as ((v: number) => number) | undefined
+  if (!xScale || !yScale || !data) return <g />
+  const bw = typeof xScale.bandwidth === 'function' ? xScale.bandwidth()! : 40
+  return (
+    <g>
+      {data.map((d, i) => {
+        if (!d.target) return null
+        const cx = (xScale(d.label) ?? 0) + bw / 2
+        const cy = yScale(d.target)
+        return (
+          <line key={i} x1={cx - 24} x2={cx + 24} y1={cy} y2={cy}
+            stroke={color} strokeWidth={2} strokeDasharray="4 3" />
+        )
+      })}
+    </g>
+  )
+}
+
 interface MetricQCardProps {
   label: string
   color: string
   monthMap: Record<string, number>
   target: number
+  quarterTargets: Record<number, number>
   onTargetChange: (v: string) => void
   year: number
   quarter: number
 }
 
-function MetricQCard({ label, color, monthMap, target, onTargetChange, year, quarter }: MetricQCardProps) {
-  const pq = prevQInfo(year, quarter)
-  const prev = computeQ(monthMap, pq.year, pq.q)
+function MetricQCard({ label, color, monthMap, target, quarterTargets, onTargetChange, year, quarter }: MetricQCardProps) {
   const curr = computeQ(monthMap, year, quarter)
 
-  const chartData = [
-    { label: qLabel(pq.year, pq.q), actual: prev.actual, proj: 0,                          total: prev.actual          },
-    { label: qLabel(year, quarter), actual: curr.actual, proj: Math.round(curr.projection), total: Math.round(curr.projected) },
-  ]
+  // One bar per quarter of the year, from Q1 up to the selected quarter, each
+  // with its own stored target tick. The selected quarter uses the live-edited
+  // target so the tick moves as you type.
+  const chartData = Array.from({ length: quarter }, (_, i) => i + 1).map(q => {
+    const r = computeQ(monthMap, year, q)
+    const t = q === quarter ? target : (quarterTargets[q] ?? 0)
+    return {
+      label: qLabel(year, q),
+      actual: r.actual,
+      proj: Math.round(r.projection),
+      total: Math.round(r.projected),
+      target: t > 0 ? t : null,
+    }
+  })
 
   const progress = target > 0 ? Math.min((curr.actual / target) * 100, 100) : 0
 
@@ -134,15 +163,7 @@ function MetricQCard({ label, color, monthMap, target, onTargetChange, year, qua
               formatter={(v: unknown) => Number(v) > 0 ? formatNumber(Number(v)) : ''}
             />
           </Bar>
-          {target > 0 && (
-            <ReferenceLine
-              y={target}
-              stroke={color}
-              strokeDasharray="5 3"
-              strokeWidth={1.5}
-              label={{ value: `Target: ${formatNumber(target)}`, position: 'insideTopRight', fill: color, fontSize: 10 }}
-            />
-          )}
+          <Customized component={TargetTicks} data={chartData} color={color} />
         </ComposedChart>
       </ResponsiveContainer>
 
@@ -165,6 +186,8 @@ export default function ObjectivesPage() {
   const [year, setYear] = useState(currentYear)
   const [quarter, setQuarter] = useState(currentQuarter)
   const [targets, setTargets] = useState<Record<string, string>>({})
+  // Stored targets for every quarter of the year, per metric: { metricId: { q: value } }
+  const [allTargets, setAllTargets] = useState<Record<string, Record<number, number>>>({})
   const [monthMaps, setMonthMaps] = useState<Record<string, Record<string, number>>>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -172,11 +195,14 @@ export default function ObjectivesPage() {
 
   const loadAll = useCallback(async () => {
     setLoading(true)
-    const [igHist, liHist, ttHist, objRes] = await Promise.all([
+    const [igHist, liHist, ttHist, q1, q2, q3, q4] = await Promise.all([
       getInstagramHistory(),
       getLinkedInHistory(),
       getTikTokHistory(),
-      getObjectives(year, quarter),
+      getObjectives(year, 1),
+      getObjectives(year, 2),
+      getObjectives(year, 3),
+      getObjectives(year, 4),
     ])
 
     setMonthMaps({
@@ -186,11 +212,20 @@ export default function ObjectivesPage() {
       li_impressions:   Object.fromEntries(liHist.map(d => [`${d.year}-${d.month}`, d.impressions])),
     })
 
+    // Build per-quarter target map for all metrics, and the editable strings
+    // for the currently selected quarter.
+    const objByQ: Record<number, Awaited<ReturnType<typeof getObjectives>>> = { 1: q1, 2: q2, 3: q3, 4: q4 }
+    const at: Record<string, Record<number, number>> = {}
     const vals: Record<string, string> = {}
-    ;(objRes.data ?? []).forEach(obj => {
-      const found = METRICS.find(m => m.channel === obj.channel && m.metric === obj.metric)
-      if (found) vals[found.id] = String(obj.target_value)
-    })
+    for (const q of [1, 2, 3, 4]) {
+      for (const obj of objByQ[q].data ?? []) {
+        const found = METRICS.find(m => m.channel === obj.channel && m.metric === obj.metric)
+        if (!found) continue
+        ;(at[found.id] ??= {})[q] = obj.target_value
+        if (q === quarter) vals[found.id] = String(obj.target_value)
+      }
+    }
+    setAllTargets(at)
     setTargets(vals)
     setLoading(false)
   }, [year, quarter])
@@ -247,6 +282,7 @@ export default function ObjectivesPage() {
                 color={m.color}
                 monthMap={monthMaps[m.id] ?? {}}
                 target={parseFloat(targets[m.id] || '0') || 0}
+                quarterTargets={allTargets[m.id] ?? {}}
                 onTargetChange={v => setTargets(prev => ({ ...prev, [m.id]: v }))}
                 year={year}
                 quarter={quarter}

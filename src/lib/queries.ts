@@ -477,15 +477,41 @@ export async function upsertLinkedInMonthlyTotals(data: {
 export async function getTikTokHistory() {
   type Item = { year: number; month: number; views: number; interactions: number; newFollowers: number; totalFollowers: number; er: number }
   const hit = getCached<Item[]>('tt-history'); if (hit) return hit
-  const monthly = await supabase.from('tiktok_monthly').select('*').order('year').order('month')
-  const result = (monthly.data ?? []).map((m: Record<string, number>) => ({
-    year: m.year, month: m.month,
-    views: m.total_views ?? 0,
-    interactions: m.total_interactions ?? 0,
-    newFollowers: m.new_followers ?? 0,
-    totalFollowers: m.total_followers ?? 0,
-    er: (m.total_views ?? 0) > 0 ? ((m.total_interactions ?? 0) / (m.total_views ?? 1)) * 100 : 0,
-  })).sort((a: {year:number;month:number}, b: {year:number;month:number}) => a.year - b.year || a.month - b.month)
+  const [monthly, videos] = await Promise.all([
+    supabase.from('tiktok_monthly').select('*').order('year').order('month'),
+    supabase.from('tiktok_videos').select('year,month,views,likes,comments,shares'),
+  ])
+
+  // Sum video-level stats per month as a fallback for months where the monthly
+  // Overview CSV wasn't uploaded (matches getTikTokStats behaviour).
+  const vBy: Record<string, { views: number; inter: number }> = {}
+  for (const v of videos.data ?? []) {
+    const k = `${v.year}-${v.month}`
+    if (!vBy[k]) vBy[k] = { views: 0, inter: 0 }
+    vBy[k].views += v.views ?? 0
+    vBy[k].inter += (v.likes ?? 0) + (v.comments ?? 0) + (v.shares ?? 0)
+  }
+
+  const monthlyMap: Record<string, Record<string, number>> = {}
+  for (const m of monthly.data ?? []) monthlyMap[`${(m as Record<string,number>).year}-${(m as Record<string,number>).month}`] = m as Record<string, number>
+
+  const monthSet = new Set([...Object.keys(monthlyMap), ...Object.keys(vBy)])
+  const result = Array.from(monthSet).map(k => {
+    const [year, month] = k.split('-').map(Number)
+    const m = monthlyMap[k]
+    const vb = vBy[k] ?? { views: 0, inter: 0 }
+    // Prefer Overview-sourced monthly totals; fall back to summed video stats.
+    const views = (m?.total_views ?? 0) > 0 ? m.total_views : vb.views
+    const interactions = (m?.total_interactions ?? 0) > 0 ? m.total_interactions : vb.inter
+    return {
+      year, month,
+      views,
+      interactions,
+      newFollowers: m?.new_followers ?? 0,
+      totalFollowers: m?.total_followers ?? 0,
+      er: views > 0 ? (interactions / views) * 100 : 0,
+    }
+  }).sort((a, b) => a.year - b.year || a.month - b.month)
   setCached('tt-history', result)
   return result
 }
