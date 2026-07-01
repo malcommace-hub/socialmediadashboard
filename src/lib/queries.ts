@@ -56,6 +56,7 @@ export async function upsertInstagramMonthly(data: {
   year: number; month: number
   total_followers: number; new_followers: number
   total_views_manual?: number; total_reach_manual?: number
+  total_interactions?: number
 }) {
   return supabase.from('instagram_monthly').upsert(data, { onConflict: 'year,month' }).select().single()
 }

@@ -98,6 +98,7 @@ export default function InstagramPage() {
   const [newFollowers, setNewFollowers] = useState('')
   const [viewsApp, setViewsApp] = useState('')      // from Meta app overview
   const [reachApp, setReachApp] = useState('')       // accounts reached
+  const [interactionsApp, setInteractionsApp] = useState('') // total interactions from Meta app overview
 
   // New regular post
   const [newPost, setNewPost] = useState({ ...emptyNewPost, type: 'Reel' as InstagramPost['type'] })
@@ -164,6 +165,7 @@ export default function InstagramPage() {
       setNewFollowers(String(data.monthly?.new_followers ?? ''))
       setViewsApp(String(data.monthly?.total_views_manual ?? ''))
       setReachApp(String(data.monthly?.total_reach_manual ?? ''))
+      setInteractionsApp(String((data.monthly as { total_interactions?: number } | null)?.total_interactions || ''))
     } catch (err) {
       setError((err as { message?: string })?.message ?? 'Error al cargar datos de Instagram')
     } finally {
@@ -182,7 +184,11 @@ export default function InstagramPage() {
       new_followers: parseInt(newFollowers) || 0,
       total_views_manual: parseInt(viewsApp) || 0,
       total_reach_manual: parseInt(reachApp) || 0,
+      total_interactions: parseInt(interactionsApp) || 0,
     })
+    // Invalidate cached history/overview so the KPI, charts, score and overview
+    // reflect the saved totals instead of the stale (pre-save) cache.
+    clearCache()
     await load()
     setEditMonthly(false)
     setSaving(false)
@@ -935,6 +941,14 @@ export default function InstagramPage() {
                 <div>
                   <label className="text-xs text-gray-500 block mb-1">Accounts reached</label>
                   <input type="number" value={reachApp} onChange={e => setReachApp(e.target.value)}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-500 block mb-1">
+                    Interacciones (app)
+                    <span className="ml-1 text-gray-400 cursor-help" title="Total de interacciones del Meta overview. No incluyas colaboraciones externas — esas se suman automáticamente.">ⓘ</span>
+                  </label>
+                  <input type="number" value={interactionsApp} onChange={e => setInteractionsApp(e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                 </div>
                 <div>
