@@ -13,6 +13,8 @@ import { runSmokeTest, type SmokeCheck } from '@/lib/smokeTest'
 import { SkeletonCard } from '@/components/dashboard/SkeletonCard'
 import { clearCache } from '@/lib/queryCache'
 import { MonthScoreCard } from '@/components/dashboard/MonthScoreCard'
+import { MonthSelector } from '@/components/ui/month-selector'
+import { getStoredMonth, setStoredMonth } from '@/lib/monthStore'
 
 type HistoryPoint = Awaited<ReturnType<typeof getOverviewHistory>>[0]
 
@@ -304,7 +306,6 @@ export default function OverviewPage() {
   const [igTop, setIgTop] = useState<IgTop[]>([])
   const [liTop, setLiTop] = useState<LiTop[]>([])
   const [topOpen, setTopOpen] = useState(false)
-  const [qOpen, setQOpen] = useState(true)
   const [heatmapOpen, setHeatmapOpen] = useState(false)
 
   type HeatmapData = Awaited<ReturnType<typeof getPostingHeatmapData>>
@@ -346,6 +347,29 @@ export default function OverviewPage() {
 
   const selectedYear = current?.year
   const selectedMonth = current?.month
+
+  // Open the Overview at the shared selected month (set on any tab), once.
+  const didInitMonth = useRef(false)
+  useEffect(() => {
+    if (didInitMonth.current || !history.length) return
+    didInitMonth.current = true
+    const stored = getStoredMonth()
+    if (!stored) return
+    const idx = history.findIndex(h => h.year === stored.year && h.month === stored.month)
+    if (idx >= 0) setOffset(history.length - 1 - idx)
+  }, [history])
+
+  // Keep the shared selected month in sync with whatever month the Overview
+  // is showing, so the network tabs preselect it.
+  useEffect(() => {
+    if (current) setStoredMonth(current.year, current.month)
+  }, [current?.year, current?.month])
+
+  function selectMonth(y: number, m: number) {
+    setStoredMonth(y, m)
+    const idx = history.findIndex(h => h.year === y && h.month === m)
+    if (idx >= 0) setOffset(history.length - 1 - idx)
+  }
 
   useEffect(() => {
     if (!selectedYear) return
@@ -462,58 +486,6 @@ export default function OverviewPage() {
     const curERQ = curImpER > 0 ? (curIntQ / curImpER) * 100 : null
     const prevERQ = prevImpER > 0 ? (prevIntQ / prevImpER) * 100 : null
     return { curQ, year: current.year, prevQNum, curImpQ, prevImpQ, curFollQ, prevFollQ, curERQ, prevERQ }
-  }, [current, history])
-
-  type AlertLevel = 'positive' | 'warning' | 'critical' | 'nodata'
-  const anomalyAlerts = useMemo(() => {
-    if (!current) return null
-    const idx = history.findIndex(h => h.year === current.year && h.month === current.month)
-    if (idx < 2) return null // need at least 2 prior months
-    const prior = history.slice(Math.max(0, idx - 3), idx)
-    if (prior.length < 2) return null
-
-    function priorAvg(vals: number[]): number {
-      const nonZero = vals.filter(v => v > 0)
-      return nonZero.length ? nonZero.reduce((a, b) => a + b, 0) / nonZero.length : 0
-    }
-
-    const alerts: { label: string; level: AlertLevel; pct: number | null; magnitude: number }[] = []
-
-    function check(label: string, curr: number, priorVals: number[], positiveOnly = false) {
-      const avg = priorAvg(priorVals)
-      if (curr === 0 && avg > 0) {
-        if (!positiveOnly) alerts.push({ label, level: 'nodata', pct: null, magnitude: 100 })
-        return
-      }
-      if (avg === 0) return
-      const pct = ((curr - avg) / avg) * 100
-      if (pct > 30) {
-        alerts.push({ label, level: 'positive', pct, magnitude: pct })
-      } else if (!positiveOnly && pct < -50) {
-        alerts.push({ label, level: 'critical', pct, magnitude: Math.abs(pct) })
-      } else if (!positiveOnly && pct < -20) {
-        alerts.push({ label, level: 'warning', pct, magnitude: Math.abs(pct) })
-      }
-    }
-
-    check('Instagram views', current.igImpressions, prior.map(h => h.igImpressions))
-    check('LinkedIn impresiones', current.liImpressions, prior.map(h => h.liImpressions))
-    check('TikTok views', current.ttViews, prior.map(h => h.ttViews))
-    check(
-      'Nuevos seguidores',
-      current.igNewFollowers + current.liNewFollowers + current.ttNewFollowers,
-      prior.map(h => h.igNewFollowers + h.liNewFollowers + h.ttNewFollowers)
-    )
-    const currER = (() => {
-      const vals = [current.igER, current.liER].filter(v => v > 0)
-      return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0
-    })()
-    check('ER promedio', currER, prior.map(h => {
-      const vals = [h.igER, h.liER].filter(v => v > 0)
-      return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0
-    }), true)
-
-    return alerts.sort((a, b) => b.magnitude - a.magnitude).slice(0, 4)
   }, [current, history])
 
   const qClose = useMemo(() => {
@@ -769,6 +741,9 @@ export default function OverviewPage() {
           Overview general{current ? ` — ${shortMonthLabel(current.year, current.month)}` : ''}
         </h1>
         <div className="flex items-center gap-2">
+          {current && (
+            <MonthSelector year={current.year} month={current.month} onChange={selectMonth} />
+          )}
           <button
             onClick={() => { clearCache(); setReloadKey(k => k + 1) }}
             className="presentation-hide p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
@@ -884,90 +859,15 @@ export default function OverviewPage() {
             ))}
           </div>
 
-          {/* Q banner (collapsible) */}
-          {qBanner && (
+          {/* Q close report access */}
+          {qClose && (
             <div className="mb-6">
-              <div className="flex items-center gap-3 mb-2">
-                <button
-                  onClick={() => setQOpen(o => !o)}
-                  className="flex items-center gap-1.5 text-xs font-bold text-indigo-700 tracking-wider hover:text-indigo-900 transition-colors"
-                >
-                  Q{qBanner.curQ} {qBanner.year}
-                  {qOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                </button>
-                {qClose && (
-                  <button
-                    onClick={() => setShowQModal(true)}
-                    className="text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2.5 py-0.5 rounded-lg transition-colors"
-                  >
-                    Ver cierre del Q →
-                  </button>
-                )}
-              </div>
-              {qOpen && (
-                <div className="bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-100 rounded-2xl px-5 py-3 flex flex-wrap items-center gap-x-5 gap-y-2">
-                  <div className="hidden sm:block w-px h-4 bg-indigo-200" />
-                  {[
-                    { label: 'Impresiones', cur: qBanner.curImpQ, prev: qBanner.prevImpQ },
-                    { label: 'Seguidores', cur: qBanner.curFollQ, prev: qBanner.prevFollQ },
-                  ].map(({ label, cur, prev }) => {
-                    const pct = pctChange(cur, prev)
-                    return (
-                      <span key={label} className="text-xs text-gray-600">
-                        {label}{' '}
-                        {pct !== null && (
-                          <span className={`font-semibold ${pct >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                            {pct >= 0 ? '+' : ''}{pct.toFixed(1)}%
-                          </span>
-                        )}{' '}
-                        <span className="text-gray-400">vs Q{qBanner.prevQNum}</span>
-                      </span>
-                    )
-                  })}
-                  {qBanner.curERQ !== null && qBanner.prevERQ !== null && (
-                    <span className="text-xs text-gray-600">
-                      ER{' '}
-                      <span className={`font-semibold ${qBanner.curERQ >= qBanner.prevERQ ? 'text-emerald-600' : 'text-red-500'}`}>
-                        {qBanner.curERQ >= qBanner.prevERQ ? '+' : ''}{(qBanner.curERQ - qBanner.prevERQ).toFixed(2)}pp
-                      </span>{' '}
-                      <span className="text-gray-400">vs Q{qBanner.prevQNum}</span>
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Anomaly alerts */}
-          {anomalyAlerts !== null && (
-            <div className="mb-6">
-              {anomalyAlerts.length === 0 ? (
-                <div className="bg-emerald-50 border border-emerald-100 rounded-2xl px-4 py-3 text-sm text-emerald-700">
-                  ✅ Todas las métricas dentro del rango esperado
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                  {anomalyAlerts.map((alert, i) => {
-                    const levelCfg = {
-                      positive: { bg: 'bg-emerald-50 border-emerald-100', text: 'text-emerald-700', icon: '📈' },
-                      warning:  { bg: 'bg-amber-50 border-amber-100',     text: 'text-amber-700',   icon: '⚠️' },
-                      critical: { bg: 'bg-red-50 border-red-100',         text: 'text-red-700',     icon: '🔴' },
-                      nodata:   { bg: 'bg-gray-50 border-gray-200',       text: 'text-gray-500',    icon: '⚪' },
-                    }
-                    const cfg = levelCfg[alert.level]
-                    const suffix =
-                      alert.level === 'nodata'    ? ' sin datos este mes' :
-                      alert.level === 'positive'  ? ` +${alert.pct!.toFixed(0)}% vs promedio — mes excepcional` :
-                      alert.level === 'critical'  ? ` ${alert.pct!.toFixed(0)}% — caída significativa` :
-                                                    ` ${alert.pct!.toFixed(0)}% vs promedio de los últimos 3 meses`
-                    return (
-                      <div key={i} className={`border rounded-xl px-4 py-2.5 text-sm ${cfg.bg} ${cfg.text}`}>
-                        {cfg.icon} {alert.label}{suffix}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
+              <button
+                onClick={() => setShowQModal(true)}
+                className="text-xs font-semibold text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-2.5 py-1 rounded-lg transition-colors"
+              >
+                Ver cierre del Q{qClose.curQ} {qClose.qYear} →
+              </button>
             </div>
           )}
 

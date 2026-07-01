@@ -51,6 +51,25 @@ export default function MediosPage() {
   const [nlHistory, setNlHistory] = useState<NLHistoryPoint[]>([])
   const [nlNewSubsSaved, setNlNewSubsSaved] = useState(0)
 
+  // Baseline subscribers before we started tracking — added to the cumulative
+  // total so it doesn't start from zero. Persisted in the browser.
+  const [baseSubs, setBaseSubs] = useState(0)
+  const [editingBase, setEditingBase] = useState(false)
+  const [baseInput, setBaseInput] = useState('')
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem('seeds_nl_base_subs')
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate persisted baseline post-mount
+      if (s != null) setBaseSubs(parseInt(s) || 0)
+    } catch { /* ignore */ }
+  }, [])
+  function saveBase(v: string) {
+    const n = parseInt(v) || 0
+    setBaseSubs(n)
+    try { localStorage.setItem('seeds_nl_base_subs', String(n)) } catch { /* ignore */ }
+    setEditingBase(false)
+  }
+
   const [webMonthly, setWebMonthly] = useState<WebMonthly | null>(null)
   const [webUtmSources, setWebUtmSources] = useState<WebUtmSource[]>([])
   const [webHistory, setWebHistory] = useState<WebHistoryPoint[]>([])
@@ -112,7 +131,7 @@ export default function MediosPage() {
 
   const cumulativeSubsChart = useMemo(() => {
     const sorted = [...nlHistory].sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month)
-    let running = 0
+    let running = baseSubs
     const pts = sorted.map(d => {
       const prev = running
       running += d.newSubscribers ?? 0
@@ -120,7 +139,7 @@ export default function MediosPage() {
       return { label: shortMonthLabel(d.year, d.month), total: running, pctChange: pctC }
     })
     return pts.slice(-12)
-  }, [nlHistory])
+  }, [nlHistory, baseSubs])
 
   const topEpId = useMemo(() => {
     if (nlEpisodes.length < 2) return null
@@ -270,7 +289,32 @@ export default function MediosPage() {
 
               {cumulativeSubsChart.length >= 2 && (
                 <div className={`${chartCardCls} mb-6`}>
-                  <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Suscriptores acumulados</div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase">Suscriptores acumulados</div>
+                    {editingBase ? (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-gray-400">Base:</span>
+                        <input
+                          type="number"
+                          value={baseInput}
+                          onChange={e => setBaseInput(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') saveBase(baseInput); if (e.key === 'Escape') setEditingBase(false) }}
+                          autoFocus
+                          className="w-24 border border-gray-200 rounded-lg px-2 py-1 text-xs text-right focus:outline-none focus:ring-2 focus:ring-orange-400"
+                        />
+                        <button onClick={() => saveBase(baseInput)} className="text-xs font-medium text-orange-600 hover:text-orange-700">Guardar</button>
+                        <button onClick={() => setEditingBase(false)} className="text-xs text-gray-400 hover:text-gray-600">✕</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setBaseInput(String(baseSubs)); setEditingBase(true) }}
+                        className="text-xs text-gray-400 hover:text-orange-600 transition-colors"
+                        title="Suscriptores previos a lo cargado (antes de trackear)"
+                      >
+                        Base: <span className="font-semibold text-gray-600">{formatNumber(baseSubs)}</span> ✎
+                      </button>
+                    )}
+                  </div>
                   <ResponsiveContainer width="100%" height={160}>
                     <AreaChart data={cumulativeSubsChart} margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
                       <defs>
