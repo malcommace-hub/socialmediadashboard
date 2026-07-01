@@ -2,7 +2,7 @@
 import { useMemo } from 'react'
 import { getOverviewHistory } from '@/lib/queries'
 import { formatNumber, monthLabel } from '@/lib/utils'
-import { ratioToScore, blendedScore } from '@/lib/scoring'
+import { ratioToScore, blendedScore, absoluteScore, ABS_WEIGHT } from '@/lib/scoring'
 
 type HP = Awaited<ReturnType<typeof getOverviewHistory>>[0]
 
@@ -38,13 +38,32 @@ function priorFullAvg(history: HP[], current: HP, getValue: (h: HP) => number): 
   return vals.reduce((a, b) => a + b, 0) / vals.length
 }
 
-function blendedDimScore(actual: number, avg3: number | null, avgFull: number | null): number {
+// Best value ever recorded for a metric across the full loaded history —
+// the benchmark for the absolute (quality) score.
+function dimBenchmark(history: HP[], getValue: (h: HP) => number): number | null {
+  const vals = history.map(getValue).filter(v => v > 0)
+  return vals.length ? Math.max(...vals) : null
+}
+
+// Relative (trend) score: value vs recent 3-month and full-history averages.
+function relativeDimScore(actual: number, avg3: number | null, avgFull: number | null): number {
   const scoreA = avgFull != null && avgFull > 0 ? ratioToScore(actual / avgFull) : 55
   const scoreB = avg3 != null && avg3 > 0 ? blendedScore(actual / avg3) : 55
   if (avg3 == null && avgFull == null) return 55
   if (avg3 == null) return scoreA
   if (avgFull == null) return scoreB
   return Math.round(0.4 * scoreA + 0.6 * scoreB)
+}
+
+// Final dimension score: blend of absolute quality (vs historical best) and
+// relative trend. Absolute dominates so objectively strong months score high
+// on their own merits; relative still rewards/penalises momentum. Until a
+// benchmark exists (first months), fall back to the relative score.
+function blendedDimScore(actual: number, avg3: number | null, avgFull: number | null, benchmark: number | null): number {
+  const rel = relativeDimScore(actual, avg3, avgFull)
+  if (benchmark == null || benchmark <= 0) return rel
+  const abs = absoluteScore(actual, benchmark)
+  return Math.round(ABS_WEIGHT * abs + (1 - ABS_WEIGHT) * rel)
 }
 
 type Factor = { label: string; pct: number | null }
@@ -72,6 +91,13 @@ export function calculateMonthScore(current: HP, history: HP[], fullHistory?: HP
   const avgFNl    = priorFullAvg(fh, current, h => h.newsletterViews)
   const avgFPosts = priorFullAvg(fh, current, h => (h.igPostCount ?? 0) + (h.liPostCount ?? 0))
 
+  // Absolute benchmarks: best month ever for each metric (full loaded history).
+  const benchReach = dimBenchmark(fh, h => h.igImpressions + h.liImpressions + h.ttViews)
+  const benchEng   = dimBenchmark(fh, engVal)
+  const benchFoll  = dimBenchmark(fh, h => h.igNewFollowers + h.liNewFollowers + h.ttNewFollowers)
+  const benchNl    = dimBenchmark(fh, h => h.newsletterViews)
+  const benchPosts = dimBenchmark(fh, h => (h.igPostCount ?? 0) + (h.liPostCount ?? 0))
+
   const nlActive = nl > 0 || (avg3Nl !== null && avg3Nl > 0)
 
   const wReach = nlActive ? 0.30 : 0.40
@@ -80,11 +106,11 @@ export function calculateMonthScore(current: HP, history: HP[], fullHistory?: HP
   const wNl    = nlActive ? 0.20 : 0
   const wPosts = 0.10
 
-  const sReach = blendedDimScore(reach,      avg3Reach, avgFReach)
-  const sEng   = blendedDimScore(engagement, avg3Eng,   avgFEng)
-  const sFoll  = blendedDimScore(followers,  avg3Foll,  avgFFoll)
-  const sNl    = nlActive ? blendedDimScore(nl, avg3Nl, avgFNl) : 55
-  const sPosts = blendedDimScore(posts,      avg3Posts, avgFPosts)
+  const sReach = blendedDimScore(reach,      avg3Reach, avgFReach, benchReach)
+  const sEng   = blendedDimScore(engagement, avg3Eng,   avgFEng,   benchEng)
+  const sFoll  = blendedDimScore(followers,  avg3Foll,  avgFFoll,  benchFoll)
+  const sNl    = nlActive ? blendedDimScore(nl, avg3Nl, avgFNl, benchNl) : 55
+  const sPosts = blendedDimScore(posts,      avg3Posts, avgFPosts, benchPosts)
 
   const raw = sReach * wReach + sEng * wEng + sFoll * wFoll + (nlActive ? sNl * wNl : 0) + sPosts * wPosts
   const score = isNaN(raw) ? 0 : clamp(Math.round(raw), 0, 100)
@@ -122,7 +148,7 @@ export function MonthScoreCard({ current, history }: MonthScoreCardProps) {
     if (idx <= 0) return null
     const prevMonthData = history[idx - 1]
     const prevHistory = history.slice(0, idx)
-    const { score: prevScore } = calculateMonthScore(prevMonthData, prevHistory)
+    const { score: prevScore } = calculateMonthScore(prevMonthData, prevHistory, history)
     return result.score - prevScore
   }, [current, history, result.score])
 

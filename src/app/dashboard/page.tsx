@@ -536,7 +536,10 @@ export default function OverviewPage() {
   const allScores = useMemo(() => (
     history.map((h, idx) => ({
       ...h,
-      score: calculateMonthScore(h, history.slice(0, idx + 1)).score,
+      // Relative trend uses only months up to this point (causal); the absolute
+      // benchmark uses the full history so every month is graded against the
+      // same all-time best.
+      score: calculateMonthScore(h, history.slice(0, idx + 1), history).score,
     }))
   ), [history])
 
