@@ -134,9 +134,22 @@ export async function getTikTokStats(filter: MonthlyFilter) {
 
   const videos: TikTokVideo[] = videosRes.data ?? []
   const monthly = monthlyRes.data ?? null
-  // Prefer Overview-sourced monthly totals; fall back to summing video rows
-  const totalViews = monthly?.total_views || videos.reduce((a, v) => a + (v.views ?? 0), 0)
-  const totalInteractions = monthly?.total_interactions || videos.reduce((a, v) => a + (v.likes ?? 0) + (v.comments ?? 0) + (v.shares ?? 0), 0)
+
+  // Manually-added videos aren't part of the Overview CSV export, so their
+  // stats are added on top of the monthly totals (same pattern as IG collabs).
+  const inter = (v: TikTokVideo) => (v.likes ?? 0) + (v.comments ?? 0) + (v.shares ?? 0)
+  const manualViews = videos.filter(v => v.is_manual).reduce((a, v) => a + (v.views ?? 0), 0)
+  const manualInteractions = videos.filter(v => v.is_manual).reduce((a, v) => a + inter(v), 0)
+  // Base = Overview total when present, otherwise the sum of CSV (non-manual) videos.
+  const baseViews = (monthly?.total_views ?? 0) > 0
+    ? monthly!.total_views
+    : videos.filter(v => !v.is_manual).reduce((a, v) => a + (v.views ?? 0), 0)
+  const baseInteractions = (monthly?.total_interactions ?? 0) > 0
+    ? monthly!.total_interactions
+    : videos.filter(v => !v.is_manual).reduce((a, v) => a + inter(v), 0)
+
+  const totalViews = baseViews + manualViews
+  const totalInteractions = baseInteractions + manualInteractions
 
   return { monthly, videos, totalViews, totalInteractions }
 }
@@ -480,17 +493,19 @@ export async function getTikTokHistory() {
   const hit = getCached<Item[]>('tt-history'); if (hit) return hit
   const [monthly, videos] = await Promise.all([
     supabase.from('tiktok_monthly').select('*').order('year').order('month'),
-    supabase.from('tiktok_videos').select('year,month,views,likes,comments,shares'),
+    supabase.from('tiktok_videos').select('year,month,views,likes,comments,shares,is_manual'),
   ])
 
-  // Sum video-level stats per month as a fallback for months where the monthly
-  // Overview CSV wasn't uploaded (matches getTikTokStats behaviour).
-  const vBy: Record<string, { views: number; inter: number }> = {}
+  // Split video stats into CSV vs manual per month. Manual videos are added on
+  // top of the Overview total; CSV videos are the fallback when no Overview
+  // total exists (matches getTikTokStats behaviour).
+  const vBy: Record<string, { csvViews: number; csvInter: number; manViews: number; manInter: number }> = {}
   for (const v of videos.data ?? []) {
     const k = `${v.year}-${v.month}`
-    if (!vBy[k]) vBy[k] = { views: 0, inter: 0 }
-    vBy[k].views += v.views ?? 0
-    vBy[k].inter += (v.likes ?? 0) + (v.comments ?? 0) + (v.shares ?? 0)
+    if (!vBy[k]) vBy[k] = { csvViews: 0, csvInter: 0, manViews: 0, manInter: 0 }
+    const inter = (v.likes ?? 0) + (v.comments ?? 0) + (v.shares ?? 0)
+    if (v.is_manual) { vBy[k].manViews += v.views ?? 0; vBy[k].manInter += inter }
+    else { vBy[k].csvViews += v.views ?? 0; vBy[k].csvInter += inter }
   }
 
   const monthlyMap: Record<string, Record<string, number>> = {}
@@ -500,10 +515,10 @@ export async function getTikTokHistory() {
   const result = Array.from(monthSet).map(k => {
     const [year, month] = k.split('-').map(Number)
     const m = monthlyMap[k]
-    const vb = vBy[k] ?? { views: 0, inter: 0 }
-    // Prefer Overview-sourced monthly totals; fall back to summed video stats.
-    const views = (m?.total_views ?? 0) > 0 ? m.total_views : vb.views
-    const interactions = (m?.total_interactions ?? 0) > 0 ? m.total_interactions : vb.inter
+    const vb = vBy[k] ?? { csvViews: 0, csvInter: 0, manViews: 0, manInter: 0 }
+    // Overview total (or CSV video sum) + manual videos added on top.
+    const views = ((m?.total_views ?? 0) > 0 ? m.total_views : vb.csvViews) + vb.manViews
+    const interactions = ((m?.total_interactions ?? 0) > 0 ? m.total_interactions : vb.csvInter) + vb.manInter
     return {
       year, month,
       views,

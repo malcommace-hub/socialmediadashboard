@@ -2,7 +2,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
 import { MonthSelector } from '@/components/ui/month-selector'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import {
   getTikTokStats, getTikTokHistory, deleteTikTokVideo, upsertTikTokMonthly,
   addTikTokVideoManual, getYouTubeHistory,
@@ -92,6 +91,7 @@ export default function TikTokPage() {
     })
     setNewVideo({ title: '', video_date: '', views: '', likes: '', comments: '', shares: '', permalink: '' })
     setShowAddForm(false)
+    clearCache()
     await load()
     setSaving(false)
   }
@@ -99,6 +99,7 @@ export default function TikTokPage() {
   async function handleDelete(id: string) {
     if (!confirm('¿Eliminar este video?')) return
     await deleteTikTokVideo(id)
+    clearCache()
     await load()
   }
 
@@ -112,6 +113,7 @@ export default function TikTokPage() {
     if (!confirm(`¿Eliminar ${selected.size} elemento(s)? Esta acción no se puede deshacer.`)) return
     await Promise.all([...selected].map(id => deleteTikTokVideo(id)))
     setSelected(new Set())
+    clearCache()
     await load()
   }
 
@@ -523,7 +525,6 @@ export default function TikTokPage() {
                         ) : (
                           <div className="text-gray-700 truncate">{v.title || '(sin título)'}</div>
                         )}
-                        {v.is_manual && <Badge variant="manual">Manual</Badge>}
                       </td>
                       <td className="py-2 px-2 text-gray-500 whitespace-nowrap">{v.video_date ?? '—'}</td>
                       <td className="py-2 px-2 text-right font-medium">{formatNumber(v.views)}</td>
