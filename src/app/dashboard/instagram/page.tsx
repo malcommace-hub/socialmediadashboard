@@ -7,7 +7,7 @@ import {
   getInstagramStats, getInstagramHistory, deleteInstagramPost,
   upsertInstagramMonthly, addInstagramPostManual, getInstagramCollabComparison,
   getInstagramPostsByCollab, addFeaturedContent, getFeaturedContent, deleteFeaturedContent,
-  getInstagramErByTypeHistory, updateInstagramPostCollab, getInfluencerNames,
+  updateInstagramPostCollab, getInfluencerNames,
 } from '@/lib/queries'
 import { formatNumber, formatPercent, monthLabel, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
 import { useMesParam } from '@/hooks/useMesParam'
@@ -17,7 +17,7 @@ import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LabelList, AreaChart, Area,
   ScatterChart, Scatter, ZAxis, ReferenceLine,
-  LineChart, BarChart,
+  BarChart,
 } from 'recharts'
 import Link from 'next/link'
 import { SkeletonCard } from '@/components/dashboard/SkeletonCard'
@@ -89,7 +89,6 @@ export default function InstagramPage() {
   const [filterType, setFilterType] = useState<string>('all')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [showAddForm, setShowAddForm] = useState(false)
-  const [showAddCollabForm, setShowAddCollabForm] = useState(false)
   const [editMonthly, setEditMonthly] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -100,11 +99,8 @@ export default function InstagramPage() {
   const [reachApp, setReachApp] = useState('')       // accounts reached
   const [interactionsApp, setInteractionsApp] = useState('') // total interactions from Meta app overview
 
-  // New regular post
+  // New manual post (any type, including Collab)
   const [newPost, setNewPost] = useState({ ...emptyNewPost, type: 'Reel' as InstagramPost['type'] })
-
-  // New external collab
-  const [newCollab, setNewCollab] = useState({ ...emptyNewPost })
 
   // Collab comparison (all-time, loaded once)
   type CollabRow = { account: string; count: number; avgViews: number; avgER: number }
@@ -126,18 +122,9 @@ export default function InstagramPage() {
   const [influencerOptions, setInfluencerOptions] = useState<string[]>([])
   const [prevStats, setPrevStats] = useState<InstagramStats | null>(null)
   const [loadingCompare, setLoadingCompare] = useState(false)
-  const [erTypeHistory, setErTypeHistory] = useState<Awaited<ReturnType<typeof getInstagramErByTypeHistory>>>([])
   const [distOpen, setDistOpen] = useState(false)
 
   useEffect(() => {
-    getInstagramCollabComparison().then(({ comparison, withoutAccount }) => {
-      setCollabComparison(comparison)
-      setCollabWithout(withoutAccount)
-    }).catch(() => {})
-  }, [])
-
-  useEffect(() => {
-    getInstagramErByTypeHistory().then(setErTypeHistory).catch(() => {})
     getInfluencerNames().then(setInfluencerOptions).catch(() => {})
   }, [])
 
@@ -159,12 +146,17 @@ export default function InstagramPage() {
     setLoading(true)
     setError(null)
     try {
-      const [data, hist] = await Promise.all([
+      const [data, hist, collab] = await Promise.all([
         getInstagramStats({ year, month }),
         getInstagramHistory(),
+        getInstagramCollabComparison(),
       ])
       setStats(data)
       setHistory(hist)
+      // Refresh the all-time collab/influencer comparison here so tagging a
+      // post as a collab immediately updates the "Colaboradores" table.
+      setCollabComparison(collab.comparison)
+      setCollabWithout(collab.withoutAccount)
       setFollowers(String(data.monthly?.total_followers ?? ''))
       setNewFollowers(String(data.monthly?.new_followers ?? ''))
       setViewsApp(String(data.monthly?.total_views_manual ?? ''))
@@ -198,13 +190,13 @@ export default function InstagramPage() {
     setSaving(false)
   }
 
-  async function savePost(isCollab: boolean) {
-    const src = isCollab ? newCollab : newPost
+  async function savePost() {
+    const src = newPost
     if (!src.description && !src.permalink) return
     setSaving(true)
     await addInstagramPostManual({
       year, month,
-      type: isCollab ? 'Collab' : src.type,
+      type: src.type,
       description: src.description || null,
       post_date: src.post_date || null,
       views: parseInt(src.views) || 0,
@@ -217,8 +209,11 @@ export default function InstagramPage() {
       collab_account: src.collab_account || null,
       is_manual: true,
     })
-    if (isCollab) { setNewCollab({ ...emptyNewPost }); setShowAddCollabForm(false) }
-    else { setNewPost({ ...emptyNewPost, type: 'Reel' }); setShowAddForm(false) }
+    setNewPost({ ...emptyNewPost, type: 'Reel' })
+    setShowAddForm(false)
+    // Sort by views so the newly added content slots into the ranking.
+    setSortKey('views'); setSortDir('desc')
+    clearCache()
     await load()
     setSaving(false)
   }
@@ -226,6 +221,7 @@ export default function InstagramPage() {
   async function handleDelete(id: string) {
     if (!confirm('¿Eliminar este post? Las métricas se recalcularán automáticamente.')) return
     await deleteInstagramPost(id)
+    clearCache()
     await load()
   }
 
@@ -258,8 +254,8 @@ export default function InstagramPage() {
   }
 
   const posts = stats?.posts ?? []
-  const externalCollabs = posts.filter(p => p.is_manual && p.type === 'Collab')
-  const regularPosts = posts.filter(p => !(p.is_manual && p.type === 'Collab'))
+  // All posts live in one table now; collabs are tagged inline (no separate card).
+  const regularPosts = posts
   const filtered = (presentationMode || filterType === 'all') ? regularPosts : regularPosts.filter(p => p.type === filterType)
   const sorted = [...filtered].sort((a, b) => {
     let av = 0, bv = 0
@@ -366,8 +362,7 @@ export default function InstagramPage() {
 
   const summaryText = useMemo(() => {
     const allPosts = stats?.posts ?? []
-    const regPosts = allPosts.filter(p => !(p.is_manual && p.type === 'Collab'))
-    const bestPost = [...regPosts].sort((a, b) => b.views - a.views)[0]
+    const bestPost = [...allPosts].sort((a, b) => b.views - a.views)[0]
     const total = stats?.grandTotalViews ?? 0
     const parts: string[] = [monthLabel(year, month)]
     if (total > 0) {
@@ -397,7 +392,7 @@ export default function InstagramPage() {
 
   // Computed client-side from already-loaded posts — avoids a redundant extra query
   const typeBreakdown = useMemo(() => {
-    const posts = (stats?.posts ?? []).filter(p => !(p.is_manual && p.type === 'Collab'))
+    const posts = stats?.posts ?? []
     const byType: Record<string, { count: number; totalViews: number; totalER: number }> = {}
     for (const p of posts) {
       if (!byType[p.type]) byType[p.type] = { count: 0, totalViews: 0, totalER: 0 }
@@ -517,7 +512,7 @@ export default function InstagramPage() {
 
   const prevTypeBreakdown = useMemo(() => {
     if (!prevStats) return []
-    const posts = (prevStats.posts ?? []).filter(p => !(p.is_manual && p.type === 'Collab'))
+    const posts = prevStats.posts ?? []
     const byType: Record<string, { count: number; totalViews: number; totalER: number }> = {}
     for (const p of posts) {
       if (!byType[p.type]) byType[p.type] = { count: 0, totalViews: 0, totalER: 0 }
@@ -549,25 +544,11 @@ export default function InstagramPage() {
     return result
   }, [collabComparison])
 
-  const erByTypeChart = useMemo(() => {
-    if (!erTypeHistory.length) return null
-    const types = ['Reel', 'Post', 'Collab']
-    const monthKeys = [...new Set(erTypeHistory.map(r => `${r.year}-${r.month}`))].sort()
-    if (monthKeys.length < 3) return null
-    const validTypes = types.filter(t => erTypeHistory.filter(r => r.type === t).length >= 3)
-    if (validTypes.length < 1) return null
-    const rows = monthKeys.map(k => {
-      const [yr, mo] = k.split('-').map(Number)
-      const entry: Record<string, string | number | null> = { label: shortMonthLabel(yr, mo) }
-      for (const t of validTypes) {
-        const found = erTypeHistory.find(r => r.year === yr && r.month === mo && r.type === t)
-        entry[t] = found ? found.avgEr : null
-        entry[`${t}_count`] = found ? found.postCount : null
-      }
-      return entry
-    })
-    return { rows, validTypes }
-  }, [erTypeHistory])
+  const contentChart = useMemo(() => histLast.map(d => ({
+    label: shortMonthLabel(d.year, d.month),
+    count: d.postCount,
+    avgViews: d.avgViews,
+  })), [histLast])
 
   const viewsDist = useMemo(() => {
     const ranges = [
@@ -639,7 +620,7 @@ export default function InstagramPage() {
   }
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-8">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <div>
@@ -895,42 +876,24 @@ export default function InstagramPage() {
             </div>
           )}
 
-          {erByTypeChart && (
+          {/* Contenidos publicados + views promedio */}
+          {contentChart.length >= 1 && (
             <div className={chartCardCls + ' mb-4'}>
-              <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">
-                Tendencia de engagement por tipo
-              </div>
+              <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Contenidos publicados y views promedio</div>
               <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={erByTypeChart.rows} margin={{ top: 16, right: 8, left: 0, bottom: 0 }}>
+                <ComposedChart data={contentChart} barCategoryGap="28%" margin={{ top: 24, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                   <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => `${v}%`} axisLine={false} tickLine={false} width={36} />
-                  <Tooltip
-                    content={({ active, payload, label }) => {
-                      if (!active || !payload?.length) return null
-                      return (
-                        <div className="bg-white border border-gray-200 rounded-xl p-2 text-xs shadow-lg">
-                          <div className="font-medium text-gray-700 mb-1">{label}</div>
-                          {payload.map(p => p.value != null && (
-                            <div key={p.dataKey as string} style={{ color: p.color }} className="flex justify-between gap-3">
-                              <span>{p.name}</span>
-                              <span className="font-semibold">{Number(p.value).toFixed(2)}%</span>
-                            </div>
-                          ))}
-                        </div>
-                      )
-                    }}
-                  />
-                  {erByTypeChart.validTypes.includes('Reel') && (
-                    <Line type="monotone" dataKey="Reel" name="Reel" stroke="#ec4899" strokeWidth={2} dot={{ r: 3, fill: '#ec4899', strokeWidth: 0 }} connectNulls />
-                  )}
-                  {erByTypeChart.validTypes.includes('Post') && (
-                    <Line type="monotone" dataKey="Post" name="Post" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3, fill: '#3b82f6', strokeWidth: 0 }} connectNulls />
-                  )}
-                  {erByTypeChart.validTypes.includes('Collab') && (
-                    <Line type="monotone" dataKey="Collab" name="Collab" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 3, fill: '#8b5cf6', strokeWidth: 0 }} connectNulls />
-                  )}
-                </LineChart>
+                  <YAxis yAxisId="left" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} width={28} allowDecimals={false} />
+                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} />
+                  <Tooltip formatter={(v, n) => [n === 'Views prom.' ? formatNumber(Number(v)) : String(v), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                  <Bar yAxisId="left" dataKey="count" name="Contenidos" fill="#fbcfe8" radius={[4, 4, 0, 0]}>
+                    <LabelList dataKey="count" position="top" style={{ fontSize: 10, fontWeight: 700, fill: '#374151' }} />
+                  </Bar>
+                  <Line yAxisId="right" type="monotone" dataKey="avgViews" name="Views prom." stroke="#ec4899" strokeWidth={2} dot={{ r: 3, fill: '#ec4899', strokeWidth: 0 }}>
+                    <LabelList dataKey="avgViews" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#ec4899' }} formatter={(v: unknown) => formatNumber(Number(v))} />
+                  </Line>
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
           )}
@@ -1009,125 +972,6 @@ export default function InstagramPage() {
                   <div className="text-2xl font-bold text-emerald-600">+{formatNumber(stats?.monthly?.new_followers ?? 0)}</div>
                   <div className="text-xs text-gray-400">Nuevos este mes</div>
                 </div>
-              </div>
-            )}
-          </Card>
-
-          {/* External collabs section */}
-          <Card className="mb-6 border-l-4 border-l-orange-400">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <CardTitle>Collabs externos</CardTitle>
-                <p className="text-xs text-gray-400 mt-1">
-                  Contenidos subidos por influencers donde Seeds figura como colaborador.
-                  Sus views se suman automáticamente al total.
-                </p>
-              </div>
-              <button onClick={() => setShowAddCollabForm(!showAddCollabForm)}
-                className="presentation-hide flex items-center gap-1 text-xs bg-orange-500 text-white px-3 py-1 rounded-lg font-medium hover:bg-orange-400">
-                <Plus size={13} /> Agregar collab
-              </button>
-            </div>
-
-            {showAddCollabForm && (
-              <div className="presentation-hide bg-orange-50 rounded-xl p-4 mb-4 border border-orange-200">
-                <div className="text-sm font-medium text-gray-700 mb-3">Nuevo contenido collab externo</div>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                  <div className="col-span-2">
-                    <label className="text-xs text-gray-500 block mb-1">Descripción / título del post</label>
-                    <input type="text" placeholder="Descripción del contenido"
-                      value={newCollab.description} onChange={e => setNewCollab(v => ({ ...v, description: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 block mb-1">Cuenta del influencer</label>
-                    <input type="text" placeholder="@patriciajebsen"
-                      value={newCollab.collab_account} onChange={e => setNewCollab(v => ({ ...v, collab_account: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 block mb-1">Fecha</label>
-                    <input type="date" value={newCollab.post_date} onChange={e => setNewCollab(v => ({ ...v, post_date: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 block mb-1">Views</label>
-                    <input type="number" value={newCollab.views} onChange={e => setNewCollab(v => ({ ...v, views: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 block mb-1">Likes</label>
-                    <input type="number" value={newCollab.likes} onChange={e => setNewCollab(v => ({ ...v, likes: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 block mb-1">Comentarios</label>
-                    <input type="number" value={newCollab.comments} onChange={e => setNewCollab(v => ({ ...v, comments: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 block mb-1">Link del post</label>
-                    <input type="text" placeholder="https://instagram.com/..."
-                      value={newCollab.permalink} onChange={e => setNewCollab(v => ({ ...v, permalink: e.target.value }))}
-                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400" />
-                  </div>
-                </div>
-                <div className="flex gap-2 mt-3">
-                  <button onClick={() => savePost(true)} disabled={saving}
-                    className="bg-orange-500 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-orange-400 disabled:opacity-50">
-                    {saving ? 'Guardando...' : 'Guardar collab'}
-                  </button>
-                  <button onClick={() => setShowAddCollabForm(false)} className="text-sm text-gray-500 px-3 py-1.5 hover:text-gray-700">Cancelar</button>
-                </div>
-              </div>
-            )}
-
-            {externalCollabs.length === 0 && !showAddCollabForm ? (
-              <p className="text-sm text-gray-400 py-2">No hay collabs externos cargados para este mes.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100">
-                      <th className="text-left py-2 px-2 text-xs font-medium text-gray-400">Cuenta</th>
-                      <th className="text-left py-2 px-2 text-xs font-medium text-gray-400">Descripción</th>
-                      <th className="text-left py-2 px-2 text-xs font-medium text-gray-400">Fecha</th>
-                      <th className="text-right py-2 px-2 text-xs font-medium text-gray-400">Views</th>
-                      <th className="text-right py-2 px-2 text-xs font-medium text-gray-400">Likes</th>
-                      <th className="text-right py-2 px-2 text-xs font-medium text-gray-400">Link</th>
-                      <th className="py-2 px-2 w-8" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {externalCollabs.map(post => (
-                      <tr key={post.id} className="border-b border-gray-50 hover:bg-orange-50 group">
-                        <td className="py-2 px-2">
-                          <span className="text-xs font-medium text-orange-600">{post.collab_account || '—'}</span>
-                        </td>
-                        <td className="py-2 px-2 text-gray-700 max-w-xs truncate">{post.description || '—'}</td>
-                        <td className="py-2 px-2 text-gray-500 whitespace-nowrap">{post.post_date ?? '—'}</td>
-                        <td className="py-2 px-2 text-right font-medium">{formatNumber(post.views)}</td>
-                        <td className="py-2 px-2 text-right text-gray-600">{formatNumber(post.likes)}</td>
-                        <td className="py-2 px-2 text-right">
-                          {post.permalink
-                            ? <a href={post.permalink} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 inline-flex"><ExternalLink size={14} /></a>
-                            : '—'}
-                        </td>
-                        <td className="py-2 px-2 text-right">
-                          <button onClick={() => handleDelete(post.id)}
-                            className="text-gray-200 hover:text-red-500 group-hover:text-gray-400 transition-colors">
-                            <Trash2 size={14} />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    <tr className="bg-orange-50">
-                      <td colSpan={3} className="py-2 px-2 text-xs font-semibold text-orange-700">Total collabs externos</td>
-                      <td className="py-2 px-2 text-right text-sm font-bold text-orange-700">{formatNumber(collabViewsSum)}</td>
-                      <td colSpan={3} />
-                    </tr>
-                  </tbody>
-                </table>
               </div>
             )}
           </Card>
@@ -1268,7 +1112,7 @@ export default function InstagramPage() {
           {/* Regular posts table */}
           <Card>
             <div className="flex items-center justify-between mb-4">
-              <CardTitle>Contenido propio del mes ({regularPosts.length} posts)</CardTitle>
+              <CardTitle>Contenidos del mes ({regularPosts.length} posts)</CardTitle>
               <div className="flex gap-2 flex-wrap">
                 <div className="presentation-hide flex gap-1">
                   {['all', 'Reel', 'Post', 'Collab', 'Story'].map(t => (
@@ -1339,7 +1183,7 @@ export default function InstagramPage() {
                   </div>
                 </div>
                 <div className="flex gap-2 mt-3">
-                  <button onClick={() => savePost(false)} disabled={saving}
+                  <button onClick={() => savePost()} disabled={saving}
                     className="bg-emerald-500 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-emerald-400 disabled:opacity-50">
                     {saving ? 'Guardando...' : 'Guardar post'}
                   </button>

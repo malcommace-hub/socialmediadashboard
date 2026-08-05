@@ -360,7 +360,7 @@ export async function getOverviewHistory() {
 }
 
 export async function getInstagramHistory() {
-  type Item = { year: number; month: number; views: number; reach: number; newFollowers: number; totalFollowers: number; interactions: number; er: number }
+  type Item = { year: number; month: number; views: number; reach: number; newFollowers: number; totalFollowers: number; interactions: number; er: number; postCount: number; avgViews: number }
   const hit = getCached<Item[]>('ig-history'); if (hit) return hit
   const [monthly, posts] = await Promise.all([
     supabase.from('instagram_monthly').select('*').order('year').order('month'),
@@ -394,6 +394,8 @@ export async function getInstagramHistory() {
       totalFollowers: (m.total_followers as number) ?? 0,
       interactions,
       er,
+      postCount: pm.count,
+      avgViews: pm.count > 0 ? Math.round(pm.impressions / pm.count) : 0,
     }
   })
   setCached('ig-history', result)
@@ -462,7 +464,7 @@ export async function getContentPerformanceComparison() {
 }
 
 export async function getLinkedInHistory() {
-  type Item = { year: number; month: number; impressions: number; interactions: number; newFollowers: number; totalFollowers: number; er: number }
+  type Item = { year: number; month: number; impressions: number; interactions: number; newFollowers: number; totalFollowers: number; er: number; postCount: number; avgViews: number }
   const hit = getCached<Item[]>('li-history'); if (hit) return hit
   const [monthly, posts] = await Promise.all([
     supabase.from('linkedin_monthly').select('*').order('year').order('month'),
@@ -498,6 +500,8 @@ export async function getLinkedInHistory() {
       newFollowers: (m.new_followers as number) ?? 0,
       totalFollowers: (m.total_followers as number) ?? 0,
       er,
+      postCount: pm.count,
+      avgViews: pm.count > 0 ? Math.round(pm.impressions / pm.count) : 0,
     }
   })
   setCached('li-history', result)

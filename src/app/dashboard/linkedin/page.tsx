@@ -244,6 +244,12 @@ export default function LinkedInPage() {
     return histLast.map((d, i) => ({ label: shortMonthLabel(d.year, d.month), value: +d.er.toFixed(2), ma: ma[i] ? +ma[i]!.toFixed(2) : null }))
   }, [histLast])
 
+  const contentChart = useMemo(() => histLast.map(d => ({
+    label: shortMonthLabel(d.year, d.month),
+    count: d.postCount,
+    avgViews: d.avgViews,
+  })), [histLast])
+
   const liFollowerChart = useMemo(() => {
     // Use the full loaded history (not just the last 12 months) so adding data
     // for older months extends the evolution view further back.
@@ -304,7 +310,7 @@ export default function LinkedInPage() {
   }, [year, month, posts, kpiImpressions, kpiER])
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-8">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">LinkedIn — Seeds</h1>
@@ -482,6 +488,28 @@ export default function LinkedInPage() {
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* Contenidos publicados + views promedio */}
+          {contentChart.length >= 1 && (
+            <div className={chartCardCls + ' mb-6'}>
+              <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Contenidos publicados y views promedio</div>
+              <ResponsiveContainer width="100%" height={200}>
+                <ComposedChart data={contentChart} barCategoryGap="28%" margin={{ top: 24, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                  <YAxis yAxisId="left" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} width={28} allowDecimals={false} />
+                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} />
+                  <Tooltip formatter={(v, n) => [n === 'Views prom.' ? formatNumber(Number(v)) : String(v), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                  <Bar yAxisId="left" dataKey="count" name="Contenidos" fill="#bfdbfe" radius={[4, 4, 0, 0]}>
+                    <LabelList dataKey="count" position="top" style={{ fontSize: 10, fontWeight: 700, fill: '#374151' }} />
+                  </Bar>
+                  <Line yAxisId="right" type="monotone" dataKey="avgViews" name="Views prom." stroke="#3b82f6" strokeWidth={2} dot={{ r: 3, fill: '#3b82f6', strokeWidth: 0 }}>
+                    <LabelList dataKey="avgViews" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#3b82f6' }} formatter={(v: unknown) => formatNumber(Number(v))} />
+                  </Line>
+                </ComposedChart>
+              </ResponsiveContainer>
             </div>
           )}
 

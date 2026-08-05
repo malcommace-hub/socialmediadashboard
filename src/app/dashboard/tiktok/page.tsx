@@ -233,7 +233,7 @@ export default function TikTokPage() {
   const ytCurrentViews = ytCurH?.views ?? 0
 
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-8">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">TikTok & Shorts</h1>

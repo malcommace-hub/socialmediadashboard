@@ -313,7 +313,6 @@ export default function OverviewPage() {
 
   const [note, setNote] = useState('')
   const [saveStatus, setSaveStatus] = useState<'' | 'saving' | 'saved'>('')
-  const [copied, setCopied] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
   const [showQModal, setShowQModal] = useState(false)
   const [qNote, setQNote] = useState('')
@@ -534,89 +533,10 @@ export default function OverviewPage() {
     }, 1500)
   }
 
-  function handleCopy() {
-    if (!current) return
-    const impPct = pctChange(curImp, prevImp)
-    const follPct = pctChange(curFoll, prevFoll)
-    const lines: string[] = [
-      `Seeds — Resumen ${shortMonthLabel(current.year, current.month)}`,
-      '',
-      'OVERVIEW',
-      `Impresiones: ${formatNumber(curImp)}${impPct !== null ? ` (${impPct >= 0 ? '+' : ''}${impPct.toFixed(1)}% vs mes ant.)` : ''}`,
-      `Seguidores: +${formatNumber(curFoll)}${follPct !== null ? ` (${follPct >= 0 ? '+' : ''}${follPct.toFixed(1)}% vs mes ant.)` : ''}`,
-      `Interacciones: ${formatNumber(curInt)}`,
-    ]
-    if (current.liER) lines.push(`LinkedIn ER: ${formatPercent(current.liER)}`)
-    if (current.igER) lines.push(`Instagram ER: ${formatPercent(current.igER)}`)
-    if (igTop.length > 0) {
-      lines.push('', 'TOP INSTAGRAM')
-      igTop.slice(0, 5).forEach((p, i) => {
-        lines.push(`${i + 1}. ${p.description || '—'} (${formatNumber(p.views)} views, ${p.er.toFixed(2)}% ER)`)
-      })
-    }
-    if (liTop.length > 0) {
-      lines.push('', 'TOP LINKEDIN')
-      liTop.slice(0, 5).forEach((p, i) => {
-        lines.push(`${i + 1}. ${p.title || '—'} (${formatNumber(p.impressions)} impr., ${p.er.toFixed(2)}% ER)`)
-      })
-    }
-    if (note) {
-      lines.push('', 'INSIGHTS DEL MES')
-      lines.push(note)
-    }
-    const text = lines.join('\n')
-    const doSet = () => { setCopied(true); setTimeout(() => setCopied(false), 2000) }
-    if (navigator?.clipboard?.writeText) {
-      navigator.clipboard.writeText(text).then(doSet).catch(() => fallbackCopy(text, doSet))
-    } else {
-      fallbackCopy(text, doSet)
-    }
-  }
-
-  function fallbackCopy(text: string, onSuccess: () => void) {
-    const ta = document.createElement('textarea')
-    ta.value = text
-    ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0'
-    document.body.appendChild(ta)
-    ta.focus(); ta.select()
-    try { document.execCommand('copy'); onSuccess() } catch {}
-    document.body.removeChild(ta)
-  }
-
   const scoreColor = (s: number) => s >= 80 ? 'text-emerald-500' : s >= 60 ? 'text-green-500' : s >= 40 ? 'text-amber-500' : 'text-red-500'
 
-  function handleExportCsv() {
-    if (!current) return
-    const score = calculateMonthScore(current, history).score
-    const label = shortMonthLabel(current.year, current.month)
-    const rows: (string | number)[][] = [
-      ['Mes', label],
-      ['Score del mes', score],
-      [],
-      ['Canal', 'Alcance', 'Interacciones', 'ER%', 'Nuevos seguidores'],
-      ['Instagram', current.igImpressions, current.igInteractions, current.igER ? current.igER.toFixed(2) + '%' : '', current.igNewFollowers],
-      ['LinkedIn', current.liImpressions, current.liInteractions, current.liER ? current.liER.toFixed(2) + '%' : '', current.liNewFollowers],
-      ['TikTok', current.ttViews, current.ttInteractions, '', current.ttNewFollowers],
-      ['Newsletter', current.newsletterViews, '', '', ''],
-      [],
-      ['Total impresiones', current.igImpressions + current.liImpressions + current.ttViews + current.ytViews],
-      ['Total seguidores nuevos', current.igNewFollowers + current.liNewFollowers + current.ttNewFollowers],
-      ['Total interacciones', current.igInteractions + current.liInteractions + current.ttInteractions],
-      ['Posts IG', current.igPostCount],
-      ['Posts LI', current.liPostCount],
-    ]
-    const csv = rows.map(r => r.map(cell => `"${String(cell ?? '').replace(/"/g, '""')}"`).join(',')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `seeds-${String(current.month).padStart(2, '0')}-${current.year}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
   return (
-    <div className="p-8 max-w-7xl mx-auto">
+    <div className="p-8">
 
       {/* Q Close Modal */}
       {showQModal && qClose && (
@@ -761,33 +681,6 @@ export default function OverviewPage() {
               <FlaskConical size={13} />
               {smokeRunning ? 'Verificando…' : 'Test DB'}
             </button>
-          )}
-          {current && (
-            <>
-              <button
-                onClick={handleCopy}
-                className={`presentation-hide text-sm px-4 py-1.5 rounded-lg font-medium transition-colors ${
-                  copied ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                }`}
-              >
-                {copied ? '✓ Copiado' : 'Copiar resumen'}
-              </button>
-              <button
-                onClick={handleExportCsv}
-                className="presentation-hide text-sm px-4 py-1.5 rounded-lg font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
-                title="Exportar métricas del mes como CSV"
-              >
-                Exportar CSV
-              </button>
-              <button
-                onClick={() => window.print()}
-                className="presentation-hide flex items-center gap-1.5 text-sm px-4 py-1.5 rounded-lg font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
-                title="Imprimir o guardar como PDF"
-              >
-                <Printer size={14} />
-                Imprimir resumen
-              </button>
-            </>
           )}
         </div>
       </div>
