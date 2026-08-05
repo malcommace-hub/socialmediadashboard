@@ -329,13 +329,15 @@ export default function InstagramPage() {
 
   const igFollowerChart = useMemo(() => {
     const real = histLast.filter(d => d.totalFollowers > 0)
-    const pts = real.map((d, i) => ({
+    let pts = real.map((d, i) => ({
       label: shortMonthLabel(d.year, d.month),
       followers: d.totalFollowers,
       pctChange: i > 0 ? ((d.totalFollowers - real[i - 1].totalFollowers) / real[i - 1].totalFollowers) * 100 : null,
       projected: undefined as number | undefined,
     }))
-    // 3-month projection from avg % growth of last 6 real history points
+    // Drop the oldest month to keep the view compact.
+    if (pts.length > 2) pts = pts.slice(1)
+    // 2-month projection from avg % growth of last 6 real history points
     const allReal = history.filter(d => d.totalFollowers > 0)
     const projPts: { label: string; projected: number }[] = []
     if (allReal.length >= 3) {
@@ -346,7 +348,7 @@ export default function InstagramPage() {
       const avgRate = rates.length > 0 ? rates.reduce((a, b) => a + b, 0) / rates.length : 0
       let val = allReal[allReal.length - 1].totalFollowers
       let { year: y, month: m } = allReal[allReal.length - 1]
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; i < 2; i++) {
         m++; if (m > 12) { m = 1; y++ }
         val = Math.round(val * (1 + avgRate))
         projPts.push({ label: shortMonthLabel(y, m), projected: val })
@@ -359,26 +361,6 @@ export default function InstagramPage() {
     projPts.forEach(p => combined.push({ label: p.label, projected: p.projected, pctChange: null }))
     return combined
   }, [histLast, history])
-
-  const summaryText = useMemo(() => {
-    const allPosts = stats?.posts ?? []
-    const bestPost = [...allPosts].sort((a, b) => b.views - a.views)[0]
-    const total = stats?.grandTotalViews ?? 0
-    const parts: string[] = [monthLabel(year, month)]
-    if (total > 0) {
-      parts.push(`${formatNumber(total)} views`)
-      if (prevH?.views) {
-        const pct = pctChange(total, prevH.views)
-        if (pct !== null) parts.push(`${pct >= 0 ? '+' : ''}${pct.toFixed(1)}% vs mes ant.`)
-      }
-    }
-    if (bestPost) {
-      const desc = bestPost.description || '(sin título)'
-      const truncated = desc.length > 40 ? desc.slice(0, 40) + '…' : desc
-      parts.push(`Mejor post: "${truncated}" (${formatNumber(bestPost.views)} views)`)
-    }
-    return parts.join(' · ')
-  }, [year, month, stats, prevH])
 
   const bestErPostId = useMemo(() => {
     if (filtered.length <= 5) return null
@@ -408,68 +390,6 @@ export default function InstagramPage() {
       }))
       .sort((a, b) => b.avgViews - a.avgViews)
   }, [stats])
-
-  const contentInsight = useMemo(() => {
-    if (typeBreakdown.length < 2) return null
-    const collab = typeBreakdown.find(t => t.type === 'Collab')
-    const reel = typeBreakdown.find(t => t.type === 'Reel')
-    const post = typeBreakdown.find(t => t.type === 'Post')
-    if (collab && reel && collab.count >= 1 && reel.count >= 1 && reel.avgViews > 0 && collab.avgViews / reel.avgViews >= 2) {
-      const ratio = (collab.avgViews / reel.avgViews).toFixed(1)
-      return `Los collabs generan ${ratio}x más alcance que los reels este mes — considerar aumentar la frecuencia`
-    }
-    if (reel && post && reel.count >= 1 && post.count >= 1 && post.avgER > 0 && reel.avgER / post.avgER >= 1.5) {
-      const ratio = (reel.avgER / post.avgER).toFixed(1)
-      return `Los reels tienen ${ratio}x más engagement que los posts — priorizar formato video`
-    }
-    if (post && reel && post.count >= 1 && reel.count >= 1 && reel.avgER > 0 && post.avgER / reel.avgER >= 1.3) {
-      const ratio = (post.avgER / reel.avgER).toFixed(1)
-      return `Los posts generan más engagement por view que los reels (${ratio}x) — el formato estático está funcionando`
-    }
-    if (collab && collab.count >= 1) {
-      const own = typeBreakdown.filter(t => t.type !== 'Collab')
-      if (own.length > 0) {
-        const totalOwn = own.reduce((a, t) => a + t.count, 0)
-        const ownAvgER = totalOwn > 0 ? own.reduce((a, t) => a + t.avgER * t.count, 0) / totalOwn : 0
-        if (ownAvgER > 0 && collab.avgER / ownAvgER >= 1.2) {
-          return `Los collabs superan el ER promedio del contenido propio — los colaboradores amplifican la conversión`
-        }
-      }
-    }
-    return null
-  }, [typeBreakdown])
-
-  const bestDayToPost = useMemo(() => {
-    const DAY_NAMES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado']
-    const eligible = regularPosts.filter(p => p.post_date && p.type !== 'Story' && p.impressions > 0)
-    if (eligible.length < 10) return null
-    const byDay: Record<number, { totalER: number; count: number }> = {}
-    for (const p of eligible) {
-      const day = new Date(p.post_date! + 'T12:00:00Z').getUTCDay()
-      if (!byDay[day]) byDay[day] = { totalER: 0, count: 0 }
-      byDay[day].totalER += erForPost(p)
-      byDay[day].count++
-    }
-    const days = Object.entries(byDay)
-      .map(([d, v]) => ({ day: +d, avgER: v.count > 0 ? v.totalER / v.count : 0, count: v.count }))
-      .filter(d => d.count >= 2)
-    if (!days.length) return null
-    const best = days.reduce((b, d) => d.avgER > b.avgER ? d : b)
-    return { dayName: DAY_NAMES[best.day], avgER: best.avgER }
-  }, [regularPosts])
-
-  const freqBadge = useMemo(() => {
-    const withDate = regularPosts.filter(p => p.post_date)
-    if (!withDate.length) return null
-    const weekCounts: Record<number, number> = {}
-    for (const p of withDate) {
-      const day = new Date(p.post_date! + 'T12:00:00Z').getUTCDate()
-      const wk = day <= 7 ? 1 : day <= 14 ? 2 : day <= 21 ? 3 : day <= 28 ? 4 : 5
-      weekCounts[wk] = (weekCounts[wk] ?? 0) + 1
-    }
-    const counts = Object.values(weekCounts)
-    return counts.reduce((a, b) => a + b, 0) / counts.length
-  }, [regularPosts])
 
   const prevMonthFilter = useMemo(() => {
     const m = month === 1 ? 12 : month - 1
@@ -520,7 +440,7 @@ export default function InstagramPage() {
     return result
   }, [collabComparison])
 
-  const contentChart = useMemo(() => histLast.map(d => ({
+  const contentChart = useMemo(() => histLast.slice(-4).map(d => ({
     label: shortMonthLabel(d.year, d.month),
     count: d.postCount,
     avgViews: d.avgViews,
@@ -629,29 +549,6 @@ export default function InstagramPage() {
         </>
       ) : (
         <>
-          {/* Month summary */}
-          {summaryText && (
-            <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-xs text-gray-500 mb-3">
-              {summaryText}
-            </div>
-          )}
-          <div className="flex flex-wrap items-center gap-2 mb-5">
-            {freqBadge !== null && (
-              <div className={`presentation-hide inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-semibold ${
-                freqBadge >= 3 ? 'bg-emerald-100 text-emerald-700' :
-                freqBadge >= 1 ? 'bg-amber-100 text-amber-700' :
-                'bg-red-100 text-red-700'
-              }`}>
-                ~{freqBadge.toFixed(1)} posts/sem
-              </div>
-            )}
-            {bestDayToPost && (
-              <div className="inline-flex items-center rounded-lg px-2.5 py-1 text-xs font-semibold bg-violet-50 text-violet-700">
-                📅 Mejor día: {bestDayToPost.dayName} (ER {bestDayToPost.avgER.toFixed(1)}% promedio)
-              </div>
-            )}
-          </div>
-
           {/* KPI trend cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             {[
@@ -725,64 +622,60 @@ export default function InstagramPage() {
             </div>
           )}
 
-          {/* Follower evolution */}
-          {igFollowerChart.filter(d => d.followers).length >= 2 && (
-            <div className={chartCardCls + ' mb-4'}>
-              <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">
-                Evolución de seguidores{igFollowerChart.some(d => d.projected && !d.followers) ? ' (incl. proyección)' : ''}
-              </div>
-              <ResponsiveContainer width="100%" height={200}>
-                <ComposedChart data={igFollowerChart} margin={{ top: 36, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} domain={['auto', 'auto']} />
-                  <Tooltip formatter={(v, n) => [formatNumber(Number(v)), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                  <Line type="monotone" dataKey="followers" name="Seguidores" stroke="#ec4899" strokeWidth={2}
-                    dot={<IgFollowerDot /> as unknown as boolean} activeDot={{ r: 5 }} connectNulls={false} />
-                  {igFollowerChart.some(d => d.projected && !d.followers) && (
-                    <Line type="monotone" dataKey="projected" name="Proyección" stroke="#f9a8d4"
-                      strokeWidth={1.5} strokeDasharray="4 3"
-                      dot={{ r: 3, fill: '#f9a8d4', strokeWidth: 0 }} connectNulls />
-                  )}
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-
-          {/* Content type insight */}
-          {contentInsight && (
-            <div className="bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-2.5 text-sm text-emerald-700 mb-4">
-              💡 {contentInsight}
-            </div>
-          )}
-
-          {/* Historical charts */}
-          {histLast.length >= 1 && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-              {/* 1. Impresiones / Views — full width, matches follower chart size */}
-              <div className={chartCardCls + ' lg:col-span-2'}>
-                <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Impresiones / Views</div>
+          {/* Row 1: Evolución de seguidores + Impresiones/Views */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+            {igFollowerChart.filter(d => d.followers).length >= 2 && (
+              <div className={chartCardCls}>
+                <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">
+                  Evolución de seguidores{igFollowerChart.some(d => d.projected && !d.followers) ? ' (incl. proyección)' : ''}
+                </div>
                 <ResponsiveContainer width="100%" height={200}>
-                  <AreaChart data={viewsChart} margin={{ top: 24, right: 12, left: 0, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="igViewsGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.15} />
-                        <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
+                  <ComposedChart data={igFollowerChart} margin={{ top: 24, right: 8, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
                     <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} />
+                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} domain={['auto', 'auto']} />
                     <Tooltip formatter={(v, n) => [formatNumber(Number(v)), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                    <Area type="monotone" dataKey="value" name="Views" stroke="#f43f5e" fill="url(#igViewsGrad)" strokeWidth={2} dot={{ r: 3, fill: '#f43f5e', strokeWidth: 0 }}>
-                      <LabelList dataKey="value" position="top" offset={10} style={{ fontSize: 10, fontWeight: 700, fill: '#374151' }} formatter={(v: unknown) => formatNumber(Number(v))} />
-                    </Area>
-                    <Line type="monotone" dataKey="ma" name="Media 3m" stroke="#f43f5e" strokeDasharray="5 3" dot={false} strokeWidth={1.5} connectNulls strokeOpacity={0.6} />
-                  </AreaChart>
+                    <Line type="monotone" dataKey="followers" name="Seguidores" stroke="#ec4899" strokeWidth={2}
+                      dot={<IgFollowerDot /> as unknown as boolean} activeDot={{ r: 5 }} connectNulls={false}>
+                      <LabelList dataKey="followers" position="top" offset={10} style={{ fontSize: 9, fontWeight: 700, fill: '#374151' }} formatter={(v: unknown) => v ? formatNumber(Number(v)) : ''} />
+                    </Line>
+                    {igFollowerChart.some(d => d.projected && !d.followers) && (
+                      <Line type="monotone" dataKey="projected" name="Proyección" stroke="#f9a8d4"
+                        strokeWidth={1.5} strokeDasharray="4 3"
+                        dot={{ r: 3, fill: '#f9a8d4', strokeWidth: 0 }} connectNulls />
+                    )}
+                  </ComposedChart>
                 </ResponsiveContainer>
               </div>
+            )}
 
-              {/* 2 & 3: Interacciones and Engagement % */}
+            {/* Impresiones / Views */}
+            <div className={chartCardCls}>
+              <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Impresiones / Views</div>
+              <ResponsiveContainer width="100%" height={200}>
+                <AreaChart data={viewsChart} margin={{ top: 24, right: 12, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="igViewsGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.15} />
+                      <stop offset="95%" stopColor="#f43f5e" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} />
+                  <Tooltip formatter={(v, n) => [formatNumber(Number(v)), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                  <Area type="monotone" dataKey="value" name="Views" stroke="#f43f5e" fill="url(#igViewsGrad)" strokeWidth={2} dot={{ r: 3, fill: '#f43f5e', strokeWidth: 0 }}>
+                    <LabelList dataKey="value" position="top" offset={10} style={{ fontSize: 10, fontWeight: 700, fill: '#374151' }} formatter={(v: unknown) => formatNumber(Number(v))} />
+                  </Area>
+                  <Line type="monotone" dataKey="ma" name="Media 3m" stroke="#f43f5e" strokeDasharray="5 3" dot={false} strokeWidth={1.5} connectNulls strokeOpacity={0.6} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Row 2: Interacciones + Engagement % */}
+          {histLast.length >= 1 && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
               {[
                 { title: 'Interacciones', data: intChart, color: '#f43f5e', gradId: 'igIntGrad', isPercent: false },
                 { title: 'Engagement %', data: erChart, color: '#e11d48', gradId: 'igErGrad', isPercent: true },
@@ -809,64 +702,67 @@ export default function InstagramPage() {
                   </ResponsiveContainer>
                 </div>
               ))}
+            </div>
+          )}
 
-              {/* 4. Scatter: Alcance vs Engagement — full width */}
-              <div className={chartCardCls + ' lg:col-span-2'}>
-                <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Alcance vs Engagement</div>
-                {scatterData.pts.length >= 5 ? (
-                  <div className="relative">
-                    <ResponsiveContainer width="100%" height={200}>
-                      <ScatterChart margin={{ top: 16, right: 8, left: 0, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-                        <XAxis type="number" dataKey="x" name="Views" tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={logTickFmt} ticks={scatterData.xTicks} domain={scatterData.xDomain} axisLine={false} tickLine={false} />
-                        <YAxis type="number" dataKey="y" name="ER%" tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => `${v}%`} axisLine={false} tickLine={false} width={36} />
-                        <ZAxis range={[40, 40]} />
-                        <Tooltip content={<ScatterTooltip />} />
-                        <ReferenceLine x={scatterData.avgLogX} stroke="#d1d5db" strokeDasharray="4 2" strokeWidth={1} />
-                        <ReferenceLine y={scatterData.avgY} stroke="#d1d5db" strokeDasharray="4 2" strokeWidth={1} />
-                        {scatterData.byType.map(({ type, pts }) => (
-                          <Scatter key={type} name={type} data={pts} fill={IG_SCATTER_COLORS[type] ?? '#6b7280'} opacity={0.85} />
-                        ))}
-                      </ScatterChart>
-                    </ResponsiveContainer>
-                    <span className="absolute top-5 right-2 text-[9px] font-medium text-gray-400 pointer-events-none">Ideal</span>
-                    <span className="absolute top-5 left-10 text-[9px] font-medium text-gray-400 pointer-events-none">Nicho</span>
-                    <span className="absolute bottom-1 right-2 text-[9px] font-medium text-gray-400 pointer-events-none">Viral superficial</span>
-                    <span className="absolute bottom-1 left-10 text-[9px] font-medium text-gray-400 pointer-events-none">A mejorar</span>
-                  </div>
-                ) : (
-                  <div className="h-40 flex items-center justify-center text-xs text-gray-400 text-center px-4">
-                    Cargá al menos 5 Reels o Posts para ver este análisis
-                  </div>
-                )}
+          {/* Row 3: Alcance vs Engagement + Contenidos publicados */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+            <div className={chartCardCls}>
+              <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Alcance vs Engagement</div>
+              {scatterData.pts.length >= 5 ? (
+                <div className="relative">
+                  <ResponsiveContainer width="100%" height={200}>
+                    <ScatterChart margin={{ top: 16, right: 8, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+                      <XAxis type="number" dataKey="x" name="Views" tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={logTickFmt} ticks={scatterData.xTicks} domain={scatterData.xDomain} axisLine={false} tickLine={false} />
+                      <YAxis type="number" dataKey="y" name="ER%" tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => `${v}%`} axisLine={false} tickLine={false} width={36} />
+                      <ZAxis range={[40, 40]} />
+                      <Tooltip content={<ScatterTooltip />} />
+                      <ReferenceLine x={scatterData.avgLogX} stroke="#d1d5db" strokeDasharray="4 2" strokeWidth={1} />
+                      <ReferenceLine y={scatterData.avgY} stroke="#d1d5db" strokeDasharray="4 2" strokeWidth={1} />
+                      {scatterData.byType.map(({ type, pts }) => (
+                        <Scatter key={type} name={type} data={pts} fill={IG_SCATTER_COLORS[type] ?? '#6b7280'} opacity={0.85} />
+                      ))}
+                    </ScatterChart>
+                  </ResponsiveContainer>
+                  <span className="absolute top-5 right-2 text-[9px] font-medium text-gray-400 pointer-events-none">Ideal</span>
+                  <span className="absolute top-5 left-10 text-[9px] font-medium text-gray-400 pointer-events-none">Nicho</span>
+                  <span className="absolute bottom-1 right-2 text-[9px] font-medium text-gray-400 pointer-events-none">Viral superficial</span>
+                  <span className="absolute bottom-1 left-10 text-[9px] font-medium text-gray-400 pointer-events-none">A mejorar</span>
+                </div>
+              ) : (
+                <div className="h-40 flex items-center justify-center text-xs text-gray-400 text-center px-4">
+                  Cargá al menos 5 Reels o Posts para ver este análisis
+                </div>
+              )}
+            </div>
+
+            {contentChart.length >= 1 && (
+              <div className={chartCardCls}>
+                <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Contenidos publicados y views promedio</div>
+                <ResponsiveContainer width="100%" height={200}>
+                  <ComposedChart data={contentChart} barCategoryGap="28%" margin={{ top: 24, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                    <YAxis yAxisId="left" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} width={28} allowDecimals={false} />
+                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} />
+                    <Tooltip formatter={(v, n) => [n === 'Views prom.' ? formatNumber(Number(v)) : String(v), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                    <Bar yAxisId="left" dataKey="count" name="Contenidos" fill="#fbcfe8" radius={[4, 4, 0, 0]}>
+                      <LabelList dataKey="count" position="top" style={{ fontSize: 10, fontWeight: 700, fill: '#374151' }} />
+                    </Bar>
+                    <Line yAxisId="right" type="monotone" dataKey="avgViews" name="Views prom." stroke="#ec4899" strokeWidth={2} dot={{ r: 3, fill: '#ec4899', strokeWidth: 0 }}>
+                      <LabelList dataKey="avgViews" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#ec4899' }} formatter={(v: unknown) => formatNumber(Number(v))} />
+                    </Line>
+                  </ComposedChart>
+                </ResponsiveContainer>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          {/* Contenidos publicados + views promedio */}
-          {contentChart.length >= 1 && (
-            <div className={chartCardCls + ' mb-4'}>
-              <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Contenidos publicados y views promedio</div>
-              <ResponsiveContainer width="100%" height={200}>
-                <ComposedChart data={contentChart} barCategoryGap="28%" margin={{ top: 24, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                  <YAxis yAxisId="left" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} width={28} allowDecimals={false} />
-                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} />
-                  <Tooltip formatter={(v, n) => [n === 'Views prom.' ? formatNumber(Number(v)) : String(v), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                  <Bar yAxisId="left" dataKey="count" name="Contenidos" fill="#fbcfe8" radius={[4, 4, 0, 0]}>
-                    <LabelList dataKey="count" position="top" style={{ fontSize: 10, fontWeight: 700, fill: '#374151' }} />
-                  </Bar>
-                  <Line yAxisId="right" type="monotone" dataKey="avgViews" name="Views prom." stroke="#ec4899" strokeWidth={2} dot={{ r: 3, fill: '#ec4899', strokeWidth: 0 }}>
-                    <LabelList dataKey="avgViews" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#ec4899' }} formatter={(v: unknown) => formatNumber(Number(v))} />
-                  </Line>
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-
+          {/* Datos del mes + Rendimiento por tipo — side by side */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6 items-start">
           {/* Monthly manual data card */}
-          <Card className="mb-6">
+          <Card>
             <div className="flex items-center justify-between mb-3">
               <CardTitle>Datos del mes (desde la app)</CardTitle>
               <button onClick={() => setEditMonthly(!editMonthly)}
@@ -945,7 +841,7 @@ export default function InstagramPage() {
 
           {/* Content type breakdown */}
           {typeBreakdown.length >= 2 && (
-            <Card className="mb-6">
+            <Card>
               <CardHeader><CardTitle>Rendimiento por tipo de contenido</CardTitle></CardHeader>
               <div className="overflow-x-auto">
                 {compareMode && prevStats ? (
@@ -1003,6 +899,7 @@ export default function InstagramPage() {
               </div>
             </Card>
           )}
+          </div>
 
           {/* Distribución de alcance + Colaboradores — side-by-side collapsible panels */}
           {(viewsDist || collabComparison.length >= 2) && (
@@ -1051,9 +948,9 @@ export default function InstagramPage() {
                                 <thead>
                                   <tr className="border-b border-gray-100 text-gray-400">
                                     <th className="text-left py-1 px-2 font-medium">Contenido</th>
+                                    <th className="text-left py-1 px-2 font-medium">Colaboración con</th>
                                     <th className="text-left py-1 px-2 font-medium">Fecha</th>
                                     <th className="text-right py-1 px-2 font-medium">Views</th>
-                                    <th className="text-right py-1 px-2 font-medium">ER%</th>
                                     <th className="py-1 px-2 w-6" />
                                   </tr>
                                 </thead>
@@ -1064,9 +961,9 @@ export default function InstagramPage() {
                                         <Badge variant={p.type.toLowerCase() as 'reel' | 'post' | 'collab' | 'story'} className="mr-1">{p.type}</Badge>
                                         {p.description || '—'}
                                       </td>
+                                      <td className="py-1.5 px-2 text-orange-600 whitespace-nowrap">{p.type === 'Collab' ? (p.collab_account || '—') : '—'}</td>
                                       <td className="py-1.5 px-2 text-gray-500 whitespace-nowrap">{p.post_date ?? '—'}</td>
                                       <td className="py-1.5 px-2 text-right font-medium">{formatNumber(p.views)}</td>
-                                      <td className="py-1.5 px-2 text-right text-emerald-600">{formatPercent(erForPost(p))}</td>
                                       <td className="py-1.5 px-2 text-right">
                                         {p.permalink && !p.permalink.startsWith('manual:')
                                           ? <a href={p.permalink} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 inline-flex"><ExternalLink size={12} /></a>
@@ -1103,7 +1000,6 @@ export default function InstagramPage() {
                               <th className="text-left py-2 px-3 text-xs font-medium text-gray-400">Colaborador</th>
                               <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Collabs</th>
                               <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Views prom.</th>
-                              <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">ER% prom.</th>
                               <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Score</th>
                             </tr>
                           </thead>
@@ -1120,7 +1016,6 @@ export default function InstagramPage() {
                                   </td>
                                   <td className="py-2 px-3 text-right text-gray-700">{row.count}</td>
                                   <td className="py-2 px-3 text-right font-medium">{formatNumber(Math.round(row.avgViews))}</td>
-                                  <td className="py-2 px-3 text-right text-gray-600">{formatPercent(row.avgER)}</td>
                                   <td className="py-2 px-3 text-right">
                                     {(() => {
                                       const s = collabScores[row.account]
@@ -1132,7 +1027,7 @@ export default function InstagramPage() {
                                 </tr>
                                 {expandedCollab === row.account && (
                                   <tr key={`${row.account}-detail`}>
-                                    <td colSpan={5} className="px-3 pb-3 pt-1 bg-orange-50/60">
+                                    <td colSpan={4} className="px-3 pb-3 pt-1 bg-orange-50/60">
                                       {loadingCollab === row.account ? (
                                         <div className="text-xs text-gray-400 py-2">Cargando posts...</div>
                                       ) : (
