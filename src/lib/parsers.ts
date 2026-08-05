@@ -106,6 +106,56 @@ export function parseInstagramCSV(text: string): RawInstagramRow[] {
   }).filter(r => r.permalink || r.description)
 }
 
+// ─── Instagram "Content interactions" daily export (Meta Business Suite) ─────
+// A daily time-series CSV: Date + an interactions column. Meta's total is
+// broader than the per-post content export's likes+comments+shares+saves, so
+// this lets us use Meta's own number. Sums the interactions column and detects
+// the month from the dates.
+export interface RawInstagramInteractions {
+  total_interactions: number
+  days: number
+  year: number | null
+  month: number | null
+}
+
+export function parseInstagramInteractionsCSV(text: string): RawInstagramInteractions {
+  const result = Papa.parse<Record<string, string>>(text, {
+    header: true,
+    skipEmptyLines: true,
+    transformHeader: h => h.trim().toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[\s()]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, ''),
+  })
+  const rows = result.data
+  if (!rows.length) throw new Error('El archivo no tiene datos.')
+  const headers = Object.keys(rows[0])
+  const dateCol = headers.find(h => h.includes('date') || h.includes('fecha'))
+  let valCol = headers.find(h => h.includes('interaccion') || h.includes('interaction'))
+  if (!valCol) valCol = headers.find(h => h !== dateCol)
+  if (!valCol) throw new Error('No se encontró la columna de interacciones.')
+
+  let total = 0
+  let days = 0
+  const monthCount: Record<string, number> = {}
+  for (const r of rows) {
+    const raw = String(r[valCol] ?? '').trim()
+    if (raw === '') continue
+    total += Number(raw.replace(/[^0-9.-]/g, '')) || 0
+    days++
+    const d = dateCol ? String(r[dateCol] ?? '') : ''
+    let ym: string | null = null
+    const iso = d.match(/(\d{4})-(\d{1,2})-\d{1,2}/)
+    const us = d.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+    if (iso) ym = `${iso[1]}-${parseInt(iso[2], 10)}`
+    else if (us) ym = `${us[3]}-${parseInt(us[1], 10)}`
+    if (ym) monthCount[ym] = (monthCount[ym] ?? 0) + 1
+  }
+  let best: string | null = null, bestN = 0
+  for (const [k, n] of Object.entries(monthCount)) if (n > bestN) { best = k; bestN = n }
+  const [y, m] = best ? best.split('-').map(Number) : [null, null]
+  return { total_interactions: Math.round(total), days, year: y, month: m }
+}
+
 // ─── LinkedIn XLS (LinkedIn Analytics → Exportar) ─────────────────────────
 // Real structure from weareseeders export:
 //   Sheet: "Todas las publicaciones"

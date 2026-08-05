@@ -66,14 +66,23 @@ export async function upsertInstagramPosts(posts: Omit<InstagramPost, 'id'>[]) {
   return supabase.from('instagram_posts').upsert(posts, { onConflict: 'permalink', ignoreDuplicates: false })
 }
 
-// "Liberate" a month from its manual view/reach/interaction/ER overrides so it
-// becomes driven by the sum of its loaded posts. Called after importing that
-// month's Meta content CSV. Followers (total/new) are left untouched — those
-// are profile-level and stay manual. No-op if the month has no monthly row.
+// "Liberate" a month from its manual view/reach/ER overrides so views become
+// driven by the sum of its loaded posts. Called after importing that month's
+// Meta content CSV. Followers stay manual (profile-level) and total_interactions
+// is left untouched so a separately-uploaded Meta interactions total sticks.
 export async function clearInstagramMonthlyMetrics(year: number, month: number) {
   return supabase.from('instagram_monthly')
-    .update({ total_views_manual: 0, total_reach_manual: 0, total_interactions: 0, avg_er: null })
+    .update({ total_views_manual: 0, total_reach_manual: 0, avg_er: null })
     .eq('year', year).eq('month', month)
+}
+
+// Set the month's interactions from Meta's "Content interactions" export (its
+// total is broader than the per-post sum). Overrides the post-sum for that
+// month; clearing avg_er so ER recomputes as interactions / views.
+export async function upsertInstagramInteractions(year: number, month: number, totalInteractions: number) {
+  return supabase.from('instagram_monthly')
+    .upsert({ year, month, total_interactions: totalInteractions, avg_er: null }, { onConflict: 'year,month' })
+    .select().single()
 }
 
 // Stable identity hash — intentionally excludes mutable fields (views, likes)
