@@ -434,6 +434,30 @@ export async function getInstagramPostsByCollab(account: string) {
   return (data ?? []) as InstagramPost[]
 }
 
+// Posts whose publish date falls in a date range (inclusive), for the weekly
+// review view — spans month boundaries. Dates are 'YYYY-MM-DD'.
+export async function getInstagramPostsByDateRange(startDate: string, endDate: string) {
+  const { data } = await supabase
+    .from('instagram_posts')
+    .select('*')
+    .gte('post_date', startDate)
+    .lte('post_date', endDate)
+    .order('views', { ascending: false })
+  return (data ?? []) as InstagramPost[]
+}
+
+// Latest post publish date across all Instagram posts (anchors the weekly view).
+export async function getInstagramLatestPostDate(): Promise<string | null> {
+  const { data } = await supabase
+    .from('instagram_posts')
+    .select('post_date')
+    .not('post_date', 'is', null)
+    .order('post_date', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  return (data as { post_date: string | null } | null)?.post_date ?? null
+}
+
 export async function getInstagramCollabComparison() {
   const { data } = await supabase
     .from('instagram_posts')

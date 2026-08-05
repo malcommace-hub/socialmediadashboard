@@ -8,11 +8,12 @@ import {
   upsertInstagramMonthly, addInstagramPostManual, getInstagramCollabComparison,
   getInstagramPostsByCollab, addFeaturedContent, getFeaturedContent, deleteFeaturedContent,
   updateInstagramPostCollab, getInfluencerNames,
+  getObjectives, upsertObjective, getInstagramPostsByDateRange, getInstagramLatestPostDate,
 } from '@/lib/queries'
-import { formatNumber, formatPercent, monthLabel, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
+import { formatNumber, formatPercent, monthLabel, shortMonthLabel, movingAvg, pctChange, getQuarter, MONTH_NAMES } from '@/lib/utils'
 import { useMesParam } from '@/hooks/useMesParam'
 import type { InstagramStats, InstagramPost } from '@/lib/types'
-import { Trash2, ExternalLink, Plus, ChevronUp, ChevronDown, PencilLine, Upload, RefreshCw, Star, Users } from 'lucide-react'
+import { Trash2, ExternalLink, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, PencilLine, Upload, RefreshCw, Star, Users } from 'lucide-react'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LabelList, AreaChart, Area,
@@ -78,6 +79,25 @@ const emptyNewPost = {
   permalink: '', collab_account: '',
 }
 
+// ── Week helpers (ISO 'YYYY-MM-DD', week = Monday–Sunday) ──
+function toMonday(dateStr: string): string {
+  const d = new Date(dateStr + 'T12:00:00Z')
+  const day = d.getUTCDay() // 0=Sun
+  d.setUTCDate(d.getUTCDate() - (day === 0 ? 6 : day - 1))
+  return d.toISOString().slice(0, 10)
+}
+function addDaysISO(dateStr: string, days: number): string {
+  const d = new Date(dateStr + 'T12:00:00Z')
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+function weekRangeLabel(mondayStr: string): string {
+  const s = new Date(mondayStr + 'T12:00:00Z')
+  const e = new Date(addDaysISO(mondayStr, 6) + 'T12:00:00Z')
+  const fmt = (dt: Date) => `${dt.getUTCDate()} ${MONTH_NAMES[dt.getUTCMonth()].slice(0, 3)}`
+  return `${fmt(s)} – ${fmt(e)} ${e.getUTCFullYear()}`
+}
+
 export default function InstagramPage() {
   const { year, month, setYear, setMonth } = useMesParam()
   const [stats, setStats] = useState<InstagramStats | null>(null)
@@ -120,6 +140,18 @@ export default function InstagramPage() {
   const [loadingCompare, setLoadingCompare] = useState(false)
   const [distOpen, setDistOpen] = useState(false)
   const [distBucket, setDistBucket] = useState<string | null>(null)
+
+  // Q objectives (views + new followers) for the selected quarter
+  const [qViewsTarget, setQViewsTarget] = useState(0)
+  const [qFollTarget, setQFollTarget] = useState(0)
+  const [editingQObj, setEditingQObj] = useState(false)
+  const [qViewsInput, setQViewsInput] = useState('')
+  const [qFollInput, setQFollInput] = useState('')
+
+  // Weekly review panel
+  const [weekMonday, setWeekMonday] = useState<string | null>(null)
+  const [weekPosts, setWeekPosts] = useState<InstagramPost[]>([])
+  const [weekLoading, setWeekLoading] = useState(false)
 
   useEffect(() => {
     getInfluencerNames().then(setInfluencerOptions).catch(() => {})
@@ -165,6 +197,41 @@ export default function InstagramPage() {
 
   useEffect(() => { load() }, [load])
   useEffect(() => { setSelected(new Set()); setCompareMode(false) }, [year, month])
+
+  // Load Q objectives (views + new followers) for the selected quarter
+  const quarter = getQuarter(month)
+  useEffect(() => {
+    getObjectives(year, quarter).then(({ data }) => {
+      const rows = data ?? []
+      const v = rows.find(o => o.channel === 'instagram' && o.metric === 'views')?.target_value ?? 0
+      const f = rows.find(o => o.channel === 'instagram' && o.metric === 'new_followers')?.target_value ?? 0
+      setQViewsTarget(v); setQFollTarget(f)
+    }).catch(() => {})
+  }, [year, quarter])
+
+  async function saveQObjectives() {
+    const v = parseInt(qViewsInput) || 0
+    const f = parseInt(qFollInput) || 0
+    await Promise.all([
+      upsertObjective({ year, quarter, channel: 'instagram', metric: 'views', target_value: v }),
+      upsertObjective({ year, quarter, channel: 'instagram', metric: 'new_followers', target_value: f }),
+    ])
+    setQViewsTarget(v); setQFollTarget(f)
+    setEditingQObj(false)
+  }
+
+  // Weekly review: anchor to the latest post's week on mount, then navigate.
+  useEffect(() => {
+    getInstagramLatestPostDate().then(d => { if (d) setWeekMonday(toMonday(d)) }).catch(() => {})
+  }, [])
+  useEffect(() => {
+    if (!weekMonday) return
+    setWeekLoading(true)
+    getInstagramPostsByDateRange(weekMonday, addDaysISO(weekMonday, 6))
+      .then(setWeekPosts)
+      .catch(() => setWeekPosts([]))
+      .finally(() => setWeekLoading(false))
+  }, [weekMonday])
 
   async function saveMonthly() {
     setSaving(true)
@@ -271,11 +338,17 @@ export default function InstagramPage() {
     const pm = month === 1 ? { y: year - 1, m: 12 } : { y: year, m: month - 1 }
     return history.find(d => d.year === pm.y && d.month === pm.m)
   })()
-  const qPrevH = (() => {
-    let m = month - 3, y = year
-    if (m <= 0) { m += 12; y-- }
-    return history.find(d => d.year === y && d.month === m)
-  })()
+
+  // Quarter-to-date accumulated actuals (sum of the quarter's loaded months)
+  const qMonths = [(quarter - 1) * 3 + 1, (quarter - 1) * 3 + 2, quarter * 3]
+  const qActualViews = history.filter(d => d.year === year && qMonths.includes(d.month)).reduce((a, d) => a + d.views, 0)
+  const qActualFollowers = history.filter(d => d.year === year && qMonths.includes(d.month)).reduce((a, d) => a + d.newFollowers, 0)
+
+  // Weekly review derived stats
+  const weekViews = weekPosts.reduce((a, p) => a + (p.views ?? 0), 0)
+  const weekInteractions = weekPosts.reduce((a, p) => a + (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0) + (p.saves ?? 0) + (p.follows ?? 0), 0)
+  const weekER = weekViews > 0 ? (weekInteractions / weekViews) * 100 : 0
+  const weekCollabs = weekPosts.filter(p => p.type === 'Collab').length
 
   const viewsChart = useMemo(() => {
     const vals = histLast.map(d => d.views)
@@ -541,27 +614,71 @@ export default function InstagramPage() {
         </>
       ) : (
         <>
+          {/* Q objectives (accumulated) */}
+          <div className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm mb-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Objetivos Q{quarter} {year} · acumulado</div>
+              {editingQObj ? (
+                <div className="flex items-center gap-2">
+                  <button onClick={saveQObjectives} className="text-xs font-medium text-emerald-600 hover:text-emerald-700">Guardar</button>
+                  <button onClick={() => setEditingQObj(false)} className="text-xs text-gray-400 hover:text-gray-600">Cancelar</button>
+                </div>
+              ) : (
+                <button onClick={() => { setQViewsInput(String(qViewsTarget || '')); setQFollInput(String(qFollTarget || '')); setEditingQObj(true) }}
+                  className="presentation-hide flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 font-medium">
+                  <PencilLine size={12} /> Editar objetivos
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {[
+                { label: 'Views del Q', actual: qActualViews, target: qViewsTarget, input: qViewsInput, setInput: setQViewsInput, color: '#f43f5e' },
+                { label: 'Nuevos seguidores del Q', actual: qActualFollowers, target: qFollTarget, input: qFollInput, setInput: setQFollInput, color: '#ec4899' },
+              ].map(o => {
+                const pctRaw = o.target > 0 ? (o.actual / o.target) * 100 : 0
+                const pct = Math.min(pctRaw, 100)
+                return (
+                  <div key={o.label}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-gray-500">{o.label}</span>
+                      <span className="text-xs">
+                        <span className="font-semibold text-gray-900">{formatNumber(o.actual)}</span>
+                        <span className="text-gray-400"> / </span>
+                        {editingQObj ? (
+                          <input type="number" value={o.input} onChange={e => o.setInput(e.target.value)} placeholder="objetivo"
+                            className="w-24 border border-gray-200 rounded px-1.5 py-0.5 text-xs text-right focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                        ) : (
+                          <span className="text-gray-500">{o.target > 0 ? formatNumber(o.target) : '—'}</span>
+                        )}
+                        {o.target > 0 && <span className={`ml-2 font-bold ${pctRaw >= 100 ? 'text-emerald-600' : pctRaw >= 70 ? 'text-amber-500' : 'text-gray-400'}`}>{pctRaw.toFixed(0)}%</span>}
+                      </span>
+                    </div>
+                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: o.color }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
           {/* KPI trend cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             {[
-              { label: 'Views / Impr.', val: grandTotal, prev: prevH?.views, qPrev: qPrevH?.views, fmt: formatNumber,
+              { label: 'Views / Impr.', val: grandTotal, prev: prevH?.views, fmt: formatNumber,
                 sub: collabViewsSum > 0 ? `App ${formatNumber(appViews)} + Collabs ${formatNumber(collabViewsSum)}` : undefined },
-              { label: 'Interacciones', val: stats?.totalInteractions ?? 0, prev: prevH?.interactions, qPrev: qPrevH?.interactions, fmt: formatNumber },
-              { label: 'Engagement %', val: stats?.avgER ?? 0, prev: prevH?.er, qPrev: qPrevH?.er, fmt: (v: number) => formatPercent(v) },
-              { label: 'Nuevos seguidores', val: stats?.monthly?.new_followers ?? 0, prev: prevH?.newFollowers, qPrev: qPrevH?.newFollowers, fmt: (v: number) => `+${formatNumber(v)}` },
-            ].map(({ label, val, prev, qPrev, fmt, sub }) => (
+              { label: 'Interacciones', val: stats?.totalInteractions ?? 0, prev: prevH?.interactions, fmt: formatNumber },
+              { label: 'Engagement %', val: stats?.avgER ?? 0, prev: prevH?.er, fmt: (v: number) => formatPercent(v) },
+              { label: 'Nuevos seguidores', val: stats?.monthly?.new_followers ?? 0, prev: prevH?.newFollowers, fmt: (v: number) => `+${formatNumber(v)}` },
+            ].map(({ label, val, prev, fmt, sub }) => (
               <div key={label} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
                 <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">{label}</div>
                 <div className="text-2xl font-bold text-gray-900">{fmt(val)}</div>
                 {sub && <div className="text-xs text-gray-400 mt-0.5">{sub}</div>}
-                <div className="flex gap-3 mt-1 flex-wrap">
+                <div className="mt-1">
                   <span className="text-xs text-gray-400">
                     <TrendBadge value={val} prev={prev} />
                     <span className="ml-1">vs mes ant.</span>
-                  </span>
-                  <span className="text-xs text-gray-400">
-                    <TrendBadge value={val} prev={qPrev} />
-                    <span className="ml-1">vs Q ant.</span>
                   </span>
                 </div>
               </div>
@@ -750,6 +867,77 @@ export default function InstagramPage() {
               </div>
             )}
           </div>
+
+          {/* Repaso semanal */}
+          <Card className="mb-4">
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <div>
+                <CardTitle>Repaso semanal</CardTitle>
+                <p className="text-xs text-gray-400 mt-0.5">Contenidos publicados en la semana seleccionada (se actualiza con cada CSV que cargás).</p>
+              </div>
+              {weekMonday && (
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setWeekMonday(m => m ? addDaysISO(m, -7) : m)}
+                    className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors"><ChevronLeft size={15} /></button>
+                  <span className="text-sm font-medium text-gray-700 whitespace-nowrap">{weekRangeLabel(weekMonday)}</span>
+                  <button onClick={() => setWeekMonday(m => m ? addDaysISO(m, 7) : m)}
+                    className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors"><ChevronRight size={15} /></button>
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+              {[
+                { label: 'Contenidos', value: String(weekPosts.length) },
+                { label: 'Collabs', value: String(weekCollabs) },
+                { label: 'Views', value: formatNumber(weekViews) },
+                { label: 'ER% promedio', value: weekER > 0 ? formatPercent(weekER) : '—' },
+              ].map(s => (
+                <div key={s.label} className="bg-gray-50 rounded-xl border border-gray-100 p-3">
+                  <div className="text-[11px] text-gray-500 uppercase tracking-wide mb-1">{s.label}</div>
+                  <div className="text-xl font-bold text-gray-900">{s.value}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 text-gray-400">
+                    <th className="text-left py-2 px-2 text-xs font-medium">Contenido</th>
+                    <th className="text-left py-2 px-2 text-xs font-medium">Colaboración con</th>
+                    <th className="text-left py-2 px-2 text-xs font-medium">Fecha</th>
+                    <th className="text-right py-2 px-2 text-xs font-medium">Views</th>
+                    <th className="text-right py-2 px-2 text-xs font-medium">ER%</th>
+                    <th className="py-2 px-2 w-6" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {weekLoading ? (
+                    <tr><td colSpan={6} className="py-6 text-center text-gray-400 text-xs">Cargando…</td></tr>
+                  ) : weekPosts.length === 0 ? (
+                    <tr><td colSpan={6} className="py-6 text-center text-gray-400 text-xs">No hay contenidos publicados en esta semana.</td></tr>
+                  ) : weekPosts.map(p => (
+                    <tr key={p.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
+                      <td className="py-2 px-2 max-w-[280px] truncate">
+                        <Badge variant={p.type.toLowerCase() as 'reel' | 'post' | 'collab' | 'story'} className="mr-1">{p.type}</Badge>
+                        <span className="text-gray-700">{p.description || '—'}</span>
+                      </td>
+                      <td className="py-2 px-2 text-orange-600 whitespace-nowrap">{p.type === 'Collab' ? (p.collab_account || '—') : '—'}</td>
+                      <td className="py-2 px-2 text-gray-500 whitespace-nowrap">{p.post_date ?? '—'}</td>
+                      <td className="py-2 px-2 text-right font-medium">{formatNumber(p.views)}</td>
+                      <td className="py-2 px-2 text-right text-emerald-600">{formatPercent(erForPost(p))}</td>
+                      <td className="py-2 px-2 text-right">
+                        {p.permalink && !p.permalink.startsWith('manual:')
+                          ? <a href={p.permalink} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 inline-flex"><ExternalLink size={13} /></a>
+                          : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
 
           {/* Datos del mes + Rendimiento por tipo — side by side */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6 items-start">
