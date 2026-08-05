@@ -5,7 +5,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
   getInstagramStats, getInstagramHistory, deleteInstagramPost,
-  upsertInstagramMonthly, addInstagramPostManual, getInstagramCollabComparison,
+  addInstagramPostManual, getInstagramCollabComparison,
   getInstagramPostsByCollab, addFeaturedContent, getFeaturedContent, deleteFeaturedContent,
   updateInstagramPostCollab, getInfluencerNames,
   getObjectives, upsertObjective, getInstagramPostsByDateRange, getInstagramLatestPostDate,
@@ -109,12 +109,7 @@ export default function InstagramPage() {
   const [filterType, setFilterType] = useState<string>('all')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [showAddForm, setShowAddForm] = useState(false)
-  const [editMonthly, setEditMonthly] = useState(false)
   const [saving, setSaving] = useState(false)
-
-  // Monthly manual fields
-  const [followers, setFollowers] = useState('')
-  const [newFollowers, setNewFollowers] = useState('')
 
   // New manual post (any type, including Collab)
   const [newPost, setNewPost] = useState({ ...emptyNewPost, type: 'Reel' as InstagramPost['type'] })
@@ -186,8 +181,6 @@ export default function InstagramPage() {
       // post as a collab immediately updates the "Colaboradores" table.
       setCollabComparison(collab.comparison)
       setCollabWithout(collab.withoutAccount)
-      setFollowers(String(data.monthly?.total_followers ?? ''))
-      setNewFollowers(String(data.monthly?.new_followers ?? ''))
     } catch (err) {
       setError((err as { message?: string })?.message ?? 'Error al cargar datos de Instagram')
     } finally {
@@ -232,21 +225,6 @@ export default function InstagramPage() {
       .catch(() => setWeekPosts([]))
       .finally(() => setWeekLoading(false))
   }, [weekMonday])
-
-  async function saveMonthly() {
-    setSaving(true)
-    // Only followers are manual now; views/interactions/ER come from the posts.
-    // Passing only these keys leaves any existing metric overrides untouched.
-    await upsertInstagramMonthly({
-      year, month,
-      total_followers: parseInt(followers) || 0,
-      new_followers: parseInt(newFollowers) || 0,
-    })
-    clearCache()
-    await load()
-    setEditMonthly(false)
-    setSaving(false)
-  }
 
   async function savePost() {
     const src = newPost
@@ -669,7 +647,8 @@ export default function InstagramPage() {
                 sub: collabViewsSum > 0 ? `App ${formatNumber(appViews)} + Collabs ${formatNumber(collabViewsSum)}` : undefined },
               { label: 'Interacciones', val: stats?.totalInteractions ?? 0, prev: prevH?.interactions, fmt: formatNumber },
               { label: 'Engagement %', val: stats?.avgER ?? 0, prev: prevH?.er, fmt: (v: number) => formatPercent(v) },
-              { label: 'Nuevos seguidores', val: stats?.monthly?.new_followers ?? 0, prev: prevH?.newFollowers, fmt: (v: number) => `+${formatNumber(v)}` },
+              { label: 'Nuevos seguidores', val: stats?.monthly?.new_followers ?? 0, prev: prevH?.newFollowers, fmt: (v: number) => `+${formatNumber(v)}`,
+                sub: (stats?.monthly?.total_followers ?? 0) > 0 ? `${formatNumber(stats!.monthly!.total_followers)} totales` : undefined },
             ].map(({ label, val, prev, fmt, sub }) => (
               <div key={label} className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm">
                 <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">{label}</div>
@@ -939,64 +918,8 @@ export default function InstagramPage() {
             </div>
           </Card>
 
-          {/* Datos del mes + Rendimiento por tipo — side by side */}
+          {/* Análisis del mes — paneles */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6 items-start">
-          {/* Monthly data card */}
-          <Card>
-            <div className="flex items-center justify-between mb-1">
-              <CardTitle>Datos del mes</CardTitle>
-              <button onClick={() => setEditMonthly(!editMonthly)}
-                className="presentation-hide flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 font-medium">
-                <PencilLine size={12} /> {editMonthly ? 'Cancelar' : 'Editar seguidores'}
-              </button>
-            </div>
-            <p className="text-xs text-gray-400 mb-3">Views, interacciones y ER se calculan automáticamente sumando el CSV de contenidos. Los seguidores se cargan a mano.</p>
-
-            {editMonthly ? (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-gray-500 block mb-1">Seguidores totales</label>
-                  <input type="number" value={followers} onChange={e => setFollowers(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500 block mb-1">Nuevos seguidores</label>
-                  <input type="number" value={newFollowers} onChange={e => setNewFollowers(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                </div>
-                <div className="col-span-2 flex gap-2 pt-1">
-                  <button onClick={saveMonthly} disabled={saving}
-                    className="bg-emerald-500 text-white px-5 py-1.5 rounded-lg text-sm font-medium hover:bg-emerald-400 disabled:opacity-50">
-                    {saving ? 'Guardando...' : 'Guardar'}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-wrap gap-x-8 gap-y-4">
-                <div>
-                  <div className="text-2xl font-bold text-gray-900">{formatNumber(grandTotal)}</div>
-                  <div className="text-xs text-gray-400">Views</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-gray-900">{formatNumber(stats?.totalInteractions ?? 0)}</div>
-                  <div className="text-xs text-gray-400">Interacciones</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-blue-600">{stats?.avgER ? formatPercent(stats.avgER) : '—'}</div>
-                  <div className="text-xs text-gray-400">ER%</div>
-                </div>
-                <div className="border-l border-gray-100 pl-8">
-                  <div className="text-2xl font-bold text-gray-900">{formatNumber(stats?.monthly?.total_followers ?? 0)}</div>
-                  <div className="text-xs text-gray-400">Seguidores</div>
-                </div>
-                <div>
-                  <div className="text-2xl font-bold text-emerald-600">+{formatNumber(stats?.monthly?.new_followers ?? 0)}</div>
-                  <div className="text-xs text-gray-400">Nuevos este mes</div>
-                </div>
-              </div>
-            )}
-          </Card>
-
           {/* Content type breakdown */}
           {typeBreakdown.length >= 2 && (
             <Card>
@@ -1057,12 +980,8 @@ export default function InstagramPage() {
               </div>
             </Card>
           )}
-          </div>
 
-          {/* Distribución de alcance + Colaboradores — side-by-side collapsible panels */}
-          {(viewsDist || collabComparison.length >= 2) && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6 items-start">
-              {viewsDist && (
+          {viewsDist && (
                 <Card>
                   <div
                     className="flex items-center justify-between cursor-pointer select-none"
@@ -1141,7 +1060,7 @@ export default function InstagramPage() {
               )}
 
               {collabComparison.length >= 2 && (
-                <Card>
+                <Card className="lg:col-span-2">
                   <div
                     className="flex items-center justify-between cursor-pointer select-none"
                     onClick={() => setCollabsOpen(o => !o)}
@@ -1239,7 +1158,6 @@ export default function InstagramPage() {
                 </Card>
               )}
             </div>
-          )}
 
           {/* Regular posts table */}
           <Card>

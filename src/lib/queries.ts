@@ -76,6 +76,14 @@ export async function clearInstagramMonthlyMetrics(year: number, month: number) 
     .eq('year', year).eq('month', month)
 }
 
+// Followers for a month (for the manual followers entry on the upload page).
+export async function getInstagramFollowers(year: number, month: number) {
+  const { data } = await supabase.from('instagram_monthly')
+    .select('total_followers,new_followers').eq('year', year).eq('month', month).maybeSingle()
+  const row = data as { total_followers: number | null; new_followers: number | null } | null
+  return { total_followers: row?.total_followers ?? 0, new_followers: row?.new_followers ?? 0 }
+}
+
 // Set the month's interactions from Meta's "Content interactions" export (its
 // total is broader than the per-post sum). Overrides the post-sum for that
 // month; clearing avg_er so ER recomputes as interactions / views.

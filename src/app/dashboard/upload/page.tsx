@@ -4,7 +4,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { MonthSelector } from '@/components/ui/month-selector'
 import { parseInstagramCSV, parseInstagramInteractionsCSV, parseLinkedInCSV, parseLinkedInXLS, parseLinkedInXLSWithDebug, parseTikTokCSV, parseTikTokOverviewCSV, parseTikTokFollowerHistoryCSV, type LinkedInDebugInfo } from '@/lib/parsers'
 import {
-  upsertInstagramPosts, clearInstagramMonthlyMetrics, upsertInstagramInteractions, upsertLinkedInPosts, upsertTikTokVideos, upsertTikTokMonthly,
+  upsertInstagramPosts, clearInstagramMonthlyMetrics, upsertInstagramInteractions, upsertInstagramMonthly, getInstagramFollowers, upsertLinkedInPosts, upsertTikTokVideos, upsertTikTokMonthly,
   getYouTubeMonthly, upsertYouTubeMonthly,
   getNewsletterData, upsertNewsletterMonthly, addNewsletterEpisode, deleteNewsletterEpisode,
   getWebData, upsertWebMonthly, upsertWebUtmSource,
@@ -63,6 +63,12 @@ export default function UploadPage() {
   const [ttOv, setTtOv] = useState<UploadState>(emptyState)
   const [ttFoll, setTtFoll] = useState<UploadState>(emptyState)
 
+  // ─── Instagram followers manual ───────────────
+  const [igFollTotal, setIgFollTotal] = useState('')
+  const [igFollNew, setIgFollNew] = useState('')
+  const [igFollSaving, setIgFollSaving] = useState(false)
+  const [igFollOk, setIgFollOk] = useState(false)
+
   // ─── YouTube Shorts manual ────────────────────
   const [ytViews, setYtViews] = useState('')
   const [ytSaving, setYtSaving] = useState(false)
@@ -92,8 +98,11 @@ export default function UploadPage() {
       getYouTubeMonthly({ year, month }),
       getNewsletterData({ year, month }),
       getWebData({ year, month }),
-    ]).then(([ytRes, nlData, webData]) => {
+      getInstagramFollowers(year, month),
+    ]).then(([ytRes, nlData, webData, igFoll]) => {
       if (cancelled) return
+      setIgFollTotal(igFoll.total_followers ? String(igFoll.total_followers) : '')
+      setIgFollNew(igFoll.new_followers ? String(igFoll.new_followers) : '')
       setYtViews(String(ytRes.data?.shorts_views ?? ''))
       setNlNewSubs(String(nlData.monthly?.new_subscribers ?? ''))
       setNlEpisodes(nlData.episodes)
@@ -108,6 +117,19 @@ export default function UploadPage() {
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [year, month])
+
+  async function saveIgFollowers() {
+    setIgFollSaving(true)
+    await upsertInstagramMonthly({
+      year, month,
+      total_followers: parseInt(igFollTotal) || 0,
+      new_followers: parseInt(igFollNew) || 0,
+    })
+    clearCache()
+    setIgFollOk(true)
+    setTimeout(() => setIgFollOk(false), 2000)
+    setIgFollSaving(false)
+  }
 
   async function saveYouTube() {
     setYtSaving(true)
@@ -501,6 +523,34 @@ export default function UploadPage() {
         </div>
 
         <Card>
+          <div className="flex items-start gap-3 mb-4">
+            <div className="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center text-rose-500 shrink-0">
+              <Camera size={18} />
+            </div>
+            <div>
+              <div className="font-semibold text-gray-900">Instagram — Seguidores</div>
+              <div className="text-xs text-gray-400">Seguidores totales y nuevos del mes (del perfil de Instagram)</div>
+            </div>
+          </div>
+          <div className="flex gap-3 items-end flex-wrap">
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Seguidores totales</label>
+              <input type="number" value={igFollTotal} onChange={e => setIgFollTotal(e.target.value)} placeholder="0"
+                className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-rose-400" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Nuevos seguidores</label>
+              <input type="number" value={igFollNew} onChange={e => setIgFollNew(e.target.value)} placeholder="0"
+                className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-36 focus:outline-none focus:ring-2 focus:ring-rose-400" />
+            </div>
+            <button onClick={saveIgFollowers} disabled={igFollSaving}
+              className="bg-rose-500 text-white px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-rose-400 disabled:opacity-50">
+              {igFollSaving ? 'Guardando...' : igFollOk ? '✓ Guardado' : 'Guardar'}
+            </button>
+          </div>
+        </Card>
+
+        <Card className="mt-4">
           <div className="flex items-start gap-3 mb-4">
             <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center text-red-500 shrink-0">
               <Play size={18} />
