@@ -322,10 +322,11 @@ export default function InstagramPage() {
   const qActualViews = history.filter(d => d.year === year && qMonths.includes(d.month)).reduce((a, d) => a + d.views, 0)
   const qActualFollowers = history.filter(d => d.year === year && qMonths.includes(d.month)).reduce((a, d) => a + d.newFollowers, 0)
 
-  // Weekly review derived stats
+  // Weekly review derived stats. ER% here is the average of the per-post ER
+  // shown in the rows (same definition as erForPost), so the tile reconciles
+  // with the table.
   const weekViews = weekPosts.reduce((a, p) => a + (p.views ?? 0), 0)
-  const weekInteractions = weekPosts.reduce((a, p) => a + (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0) + (p.saves ?? 0) + (p.follows ?? 0), 0)
-  const weekER = weekViews > 0 ? (weekInteractions / weekViews) * 100 : 0
+  const weekER = weekPosts.length ? weekPosts.reduce((a, p) => a + erForPost(p), 0) / weekPosts.length : 0
   const weekCollabs = weekPosts.filter(p => p.type === 'Collab').length
 
   const viewsChart = useMemo(() => {
@@ -547,6 +548,8 @@ export default function InstagramPage() {
     clearCache()
     await load()
     getInfluencerNames().then(setInfluencerOptions).catch(() => {})
+    // Refresh the weekly panel so a newly-tagged collab updates its row/labels.
+    if (weekMonday) getInstagramPostsByDateRange(weekMonday, addDaysISO(weekMonday, 6)).then(setWeekPosts).catch(() => {})
   }
 
   return (
@@ -644,7 +647,7 @@ export default function InstagramPage() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
             {[
               { label: 'Views / Impr.', val: grandTotal, prev: prevH?.views, fmt: formatNumber,
-                sub: collabViewsSum > 0 ? `App ${formatNumber(appViews)} + Collabs ${formatNumber(collabViewsSum)}` : undefined },
+                sub: appViews > 0 && collabViewsSum > 0 ? `App ${formatNumber(appViews)} + Collabs ${formatNumber(collabViewsSum)}` : undefined },
               { label: 'Interacciones', val: stats?.totalInteractions ?? 0, prev: prevH?.interactions, fmt: formatNumber },
               { label: 'Engagement %', val: stats?.avgER ?? 0, prev: prevH?.er, fmt: (v: number) => formatPercent(v) },
               { label: 'Nuevos seguidores', val: stats?.monthly?.new_followers ?? 0, prev: prevH?.newFollowers, fmt: (v: number) => `+${formatNumber(v)}`,

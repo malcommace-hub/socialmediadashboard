@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { MonthSelector } from '@/components/ui/month-selector'
+import { setStoredMonth } from '@/lib/monthStore'
 import { parseInstagramCSV, parseInstagramInteractionsCSV, parseLinkedInCSV, parseLinkedInXLS, parseLinkedInXLSWithDebug, parseTikTokCSV, parseTikTokOverviewCSV, parseTikTokFollowerHistoryCSV, type LinkedInDebugInfo } from '@/lib/parsers'
 import {
   upsertInstagramPosts, clearInstagramMonthlyMetrics, upsertInstagramInteractions, upsertInstagramMonthly, getInstagramFollowers, upsertLinkedInPosts, upsertTikTokVideos, upsertTikTokMonthly,
@@ -229,6 +230,7 @@ export default function UploadPage() {
       // Switch this month to be driven by the sum of its posts (clears any manual
       // view/interaction overrides) so re-uploading updates the numbers.
       await clearInstagramMonthlyMetrics(year, month)
+      setStoredMonth(year, month)
       clearCache()
       setIg(s => ({ ...s, status: 'done' }))
     } catch (err) {

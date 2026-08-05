@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { currentYearMonth } from '@/lib/utils'
 import { getStoredMonth, setStoredMonth } from '@/lib/monthStore'
+import { getLatestDataMonth } from '@/lib/queries'
 
 export function useMesParam() {
   const { year: cy, month: cm } = currentYearMonth()
@@ -29,6 +30,12 @@ export function useMesParam() {
         setMonth(stored.month)
         return
       }
+      // No URL param and no stored month (fresh visit): default to the latest
+      // month that actually has data, not today's (likely empty) calendar month.
+      getLatestDataMonth().then(latest => {
+        if (latest) { setYear(latest.year); setMonth(latest.month) }
+      }).catch(() => {})
+      return
     }
     setStoredMonth(year, month)
     const url = new URL(window.location.href)

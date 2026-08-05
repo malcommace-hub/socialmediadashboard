@@ -318,7 +318,7 @@ export async function getOverviewHistory() {
     supabase.from('linkedin_posts').select('year,month,impressions,interactions,er_decimal'),
     supabase.from('tiktok_monthly').select('year,month,total_views,total_interactions,new_followers,total_followers').order('year').order('month'),
     supabase.from('youtube_monthly').select('year,month,shorts_views').order('year').order('month'),
-    supabase.from('instagram_posts').select('year,month,views,impressions,likes,comments,shares,saves,follows'),
+    supabase.from('instagram_posts').select('year,month,type,is_manual,views,impressions,likes,comments,shares,saves,follows'),
     supabase.from('newsletter_episodes').select('year,month,views'),
   ])
 
@@ -331,14 +331,16 @@ export async function getOverviewHistory() {
     liByMonth[k].erSum += p.er_decimal ?? 0
     liByMonth[k].count++
   }
-  const igByMonth: Record<string, { interactions: number; impressions: number; views: number; count: number }> = {}
+  const igByMonth: Record<string, { interactions: number; impressions: number; views: number; count: number; extViews: number; extInter: number }> = {}
   for (const p of igPosts.data ?? []) {
     const k = `${p.year}-${p.month}`
-    if (!igByMonth[k]) igByMonth[k] = { interactions: 0, impressions: 0, views: 0, count: 0 }
+    if (!igByMonth[k]) igByMonth[k] = { interactions: 0, impressions: 0, views: 0, count: 0, extViews: 0, extInter: 0 }
+    const inter = (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0) + (p.saves ?? 0) + (p.follows ?? 0)
     igByMonth[k].impressions += p.impressions ?? p.views ?? 0
     igByMonth[k].views += p.views ?? 0
-    igByMonth[k].interactions += (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0) + (p.saves ?? 0) + (p.follows ?? 0)
+    igByMonth[k].interactions += inter
     igByMonth[k].count++
+    if (p.is_manual && p.type === 'Collab') { igByMonth[k].extViews += p.views ?? 0; igByMonth[k].extInter += inter }
   }
   const nlByMonth: Record<string, number> = {}
   for (const ep of nlEpisodes.data ?? []) {
@@ -359,14 +361,16 @@ export async function getOverviewHistory() {
     const tt = (ttMonthly.data ?? []).find((d: {year:number;month:number}) => d.year === yr && d.month === mo)
     const yt = (ytMonthly.data ?? []).find((d: {year:number;month:number}) => d.year === yr && d.month === mo)
     const liM = liByMonth[key] ?? { impressions: 0, interactions: 0, erSum: 0, count: 0 }
-    const igM = igByMonth[key] ?? { interactions: 0, impressions: 0, views: 0, count: 0 }
+    const igM = igByMonth[key] ?? { interactions: 0, impressions: 0, views: 0, count: 0, extViews: 0, extInter: 0 }
     // Prefer stored monthly totals for LinkedIn when post-level data isn't available
     const liImpressions = (li as Record<string, number>)?.total_impressions > 0 ? (li as Record<string, number>).total_impressions : liM.impressions
     const liInteractions = (li as Record<string, number>)?.total_interactions > 0 ? (li as Record<string, number>).total_interactions : liM.interactions
-    // IG source of truth = sum of loaded posts; frozen on manual totals only while set.
+    // IG source of truth = sum of loaded posts; frozen on manual totals only while
+    // set (external-collab posts add on top, matching getInstagramStats).
     const igManualViews = (ig as Record<string, number>)?.total_views_manual ?? 0
-    const igImpressionsVal = igManualViews > 0 ? igManualViews : igM.views
-    const igInteractions = (ig as Record<string,number>)?.total_interactions > 0 ? (ig as Record<string,number>).total_interactions : igM.interactions
+    const igImpressionsVal = igManualViews > 0 ? igManualViews + igM.extViews : igM.views
+    const igStoredInter = (ig as Record<string,number>)?.total_interactions ?? 0
+    const igInteractions = igStoredInter > 0 ? igStoredInter + igM.extInter : igM.interactions
     const igER = (ig as Record<string,number | null>)?.avg_er != null ? (ig as Record<string,number>).avg_er : (igImpressionsVal > 0 ? (igInteractions / igImpressionsVal) * 100 : 0)
     return {
       year: yr, month: mo,
@@ -399,16 +403,18 @@ export async function getInstagramHistory() {
   const hit = getCached<Item[]>('ig-history'); if (hit) return hit
   const [monthly, posts] = await Promise.all([
     supabase.from('instagram_monthly').select('*').order('year').order('month'),
-    supabase.from('instagram_posts').select('year,month,views,impressions,likes,comments,shares,saves,follows'),
+    supabase.from('instagram_posts').select('year,month,type,is_manual,views,impressions,likes,comments,shares,saves,follows'),
   ])
-  const byMonth: Record<string, { interactions: number; impressions: number; views: number; count: number }> = {}
+  const byMonth: Record<string, { interactions: number; impressions: number; views: number; count: number; extViews: number; extInter: number }> = {}
   for (const p of posts.data ?? []) {
     const k = `${p.year}-${p.month}`
-    if (!byMonth[k]) byMonth[k] = { interactions: 0, impressions: 0, views: 0, count: 0 }
+    if (!byMonth[k]) byMonth[k] = { interactions: 0, impressions: 0, views: 0, count: 0, extViews: 0, extInter: 0 }
+    const inter = (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0) + (p.saves ?? 0) + (p.follows ?? 0)
     byMonth[k].impressions += p.impressions ?? p.views ?? 0
     byMonth[k].views += p.views ?? 0
-    byMonth[k].interactions += (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0) + (p.saves ?? 0) + (p.follows ?? 0)
+    byMonth[k].interactions += inter
     byMonth[k].count++
+    if (p.is_manual && p.type === 'Collab') { byMonth[k].extViews += p.views ?? 0; byMonth[k].extInter += inter }
   }
   const monthlyMap: Record<string, Record<string, number | null>> = {}
   for (const m of monthly.data ?? []) {
@@ -418,12 +424,14 @@ export async function getInstagramHistory() {
   const result = Array.from(monthSet).sort().map(key => {
     const [yr, mo] = key.split('-').map(Number)
     const m = monthlyMap[key] ?? {}
-    const pm = byMonth[key] ?? { interactions: 0, impressions: 0, views: 0, count: 0 }
+    const pm = byMonth[key] ?? { interactions: 0, impressions: 0, views: 0, count: 0, extViews: 0, extInter: 0 }
     // Source of truth = sum of loaded posts; frozen on stored manual totals only
-    // while a manual value is present (cleared when that month's CSV is uploaded).
+    // while a manual value is present (external-collab posts add on top of the
+    // frozen value, matching getInstagramStats).
     const manualViews = (m.total_views_manual as number) ?? 0
-    const views = manualViews > 0 ? manualViews : pm.views
-    const interactions = ((m.total_interactions as number) ?? 0) > 0 ? (m.total_interactions as number) : pm.interactions
+    const views = manualViews > 0 ? manualViews + pm.extViews : pm.views
+    const storedInter = (m.total_interactions as number) ?? 0
+    const interactions = storedInter > 0 ? storedInter + pm.extInter : pm.interactions
     const er = m.avg_er != null ? (m.avg_er as number) : (views > 0 ? (interactions / views) * 100 : 0)
     return {
       year: yr, month: mo,
@@ -461,6 +469,20 @@ export async function getInstagramPostsByDateRange(startDate: string, endDate: s
     .lte('post_date', endDate)
     .order('views', { ascending: false })
   return (data ?? []) as InstagramPost[]
+}
+
+// Latest month that has any loaded data — used as the default selected month
+// so the dashboard opens on a month with content instead of today's (empty) one.
+export async function getLatestDataMonth(): Promise<{ year: number; month: number } | null> {
+  const latest = (t: string) => supabase.from(t).select('year,month')
+    .order('year', { ascending: false }).order('month', { ascending: false }).limit(1).maybeSingle()
+  const [igP, igM, liM, ttM] = await Promise.all([
+    latest('instagram_posts'), latest('instagram_monthly'), latest('linkedin_monthly'), latest('tiktok_monthly'),
+  ])
+  const cands = [igP.data, igM.data, liM.data, ttM.data].filter(Boolean) as { year: number; month: number }[]
+  if (!cands.length) return null
+  cands.sort((a, b) => b.year - a.year || b.month - a.month)
+  return { year: cands[0].year, month: cands[0].month }
 }
 
 // Latest post publish date across all Instagram posts (anchors the weekly view).
