@@ -86,6 +86,31 @@ export async function deleteInstagramPost(id: string) {
   return supabase.from('instagram_posts').delete().eq('id', id)
 }
 
+// Manually mark/unmark a post as a collaboration with a given influencer.
+// Passing a name sets type='Collab' + collab_account so it groups in the
+// influencer analysis; passing null clears it back to a regular Reel.
+export async function updateInstagramPostCollab(id: string, collabAccount: string | null) {
+  const patch = collabAccount && collabAccount.trim() !== ''
+    ? { type: 'Collab', collab_account: collabAccount.trim() }
+    : { type: 'Reel', collab_account: null }
+  return supabase.from('instagram_posts').update(patch).eq('id', id).select().single()
+}
+
+// Distinct influencer names ever used, for the collab tagging autocomplete.
+export async function getInfluencerNames(): Promise<string[]> {
+  const { data } = await supabase
+    .from('instagram_posts')
+    .select('collab_account')
+    .eq('type', 'Collab')
+    .not('collab_account', 'is', null)
+  const set = new Set<string>()
+  for (const r of data ?? []) {
+    const v = (r as { collab_account: string | null }).collab_account?.trim()
+    if (v) set.add(v)
+  }
+  return Array.from(set).sort((a, b) => a.localeCompare(b))
+}
+
 // ─── LinkedIn ────────────────────────────────
 
 export async function getLinkedInStats(filter: MonthlyFilter) {

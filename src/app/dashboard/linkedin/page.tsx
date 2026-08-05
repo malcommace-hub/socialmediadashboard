@@ -245,13 +245,15 @@ export default function LinkedInPage() {
   }, [histLast])
 
   const liFollowerChart = useMemo(() => {
-    const real = histLast.filter(d => d.totalFollowers > 0)
+    // Use the full loaded history (not just the last 12 months) so adding data
+    // for older months extends the evolution view further back.
+    const real = history.filter(d => d.totalFollowers > 0)
     return real.map((d, i) => ({
       label: shortMonthLabel(d.year, d.month),
       followers: d.totalFollowers,
       pctChange: i > 0 ? ((d.totalFollowers - real[i - 1].totalFollowers) / real[i - 1].totalFollowers) * 100 : null,
     }))
-  }, [histLast])
+  }, [history])
 
   const chartCardCls = 'bg-white rounded-2xl border border-gray-100 p-4 shadow-sm'
 

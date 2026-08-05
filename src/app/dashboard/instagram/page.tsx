@@ -7,12 +7,12 @@ import {
   getInstagramStats, getInstagramHistory, deleteInstagramPost,
   upsertInstagramMonthly, addInstagramPostManual, getInstagramCollabComparison,
   getInstagramPostsByCollab, addFeaturedContent, getFeaturedContent, deleteFeaturedContent,
-  getInstagramErByTypeHistory,
+  getInstagramErByTypeHistory, updateInstagramPostCollab, getInfluencerNames,
 } from '@/lib/queries'
 import { formatNumber, formatPercent, monthLabel, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
 import { useMesParam } from '@/hooks/useMesParam'
 import type { InstagramStats, InstagramPost } from '@/lib/types'
-import { Trash2, ExternalLink, Plus, ChevronUp, ChevronDown, PencilLine, Upload, RefreshCw, Star } from 'lucide-react'
+import { Trash2, ExternalLink, Plus, ChevronUp, ChevronDown, PencilLine, Upload, RefreshCw, Star, Users } from 'lucide-react'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LabelList, AreaChart, Area,
@@ -121,6 +121,9 @@ export default function InstagramPage() {
   const [featuredFormPostId, setFeaturedFormPostId] = useState<string | null>(null)
   const [featuredNote, setFeaturedNote] = useState('')
   const [savingFeatured, setSavingFeatured] = useState(false)
+  const [collabFormPostId, setCollabFormPostId] = useState<string | null>(null)
+  const [collabInput, setCollabInput] = useState('')
+  const [influencerOptions, setInfluencerOptions] = useState<string[]>([])
   const [prevStats, setPrevStats] = useState<InstagramStats | null>(null)
   const [loadingCompare, setLoadingCompare] = useState(false)
   const [erTypeHistory, setErTypeHistory] = useState<Awaited<ReturnType<typeof getInstagramErByTypeHistory>>>([])
@@ -135,6 +138,7 @@ export default function InstagramPage() {
 
   useEffect(() => {
     getInstagramErByTypeHistory().then(setErTypeHistory).catch(() => {})
+    getInfluencerNames().then(setInfluencerOptions).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -625,6 +629,15 @@ export default function InstagramPage() {
     setSavingFeatured(false)
   }
 
+  async function saveCollab(id: string, name: string) {
+    await updateInstagramPostCollab(id, name.trim() || null)
+    setCollabFormPostId(null)
+    setCollabInput('')
+    clearCache()
+    await load()
+    getInfluencerNames().then(setInfluencerOptions).catch(() => {})
+  }
+
   return (
     <div className="p-8 max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-6">
@@ -798,11 +811,11 @@ export default function InstagramPage() {
           {/* Historical charts */}
           {histLast.length >= 1 && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-              {/* 1. Impresiones / Views */}
-              <div className={chartCardCls}>
+              {/* 1. Impresiones / Views — full width, matches follower chart size */}
+              <div className={chartCardCls + ' lg:col-span-2'}>
                 <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Impresiones / Views</div>
-                <ResponsiveContainer width="100%" height={180}>
-                  <AreaChart data={viewsChart} margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
+                <ResponsiveContainer width="100%" height={200}>
+                  <AreaChart data={viewsChart} margin={{ top: 24, right: 12, left: 0, bottom: 0 }}>
                     <defs>
                       <linearGradient id="igViewsGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.15} />
@@ -813,18 +826,48 @@ export default function InstagramPage() {
                     <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => formatNumber(Number(v))} axisLine={false} tickLine={false} width={44} />
                     <Tooltip formatter={(v, n) => [formatNumber(Number(v)), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                    <Area type="monotone" dataKey="value" name="Views" stroke="#f43f5e" fill="url(#igViewsGrad)" strokeWidth={2} dot={{ r: 3, fill: '#f43f5e', strokeWidth: 0 }} />
+                    <Area type="monotone" dataKey="value" name="Views" stroke="#f43f5e" fill="url(#igViewsGrad)" strokeWidth={2} dot={{ r: 3, fill: '#f43f5e', strokeWidth: 0 }}>
+                      <LabelList dataKey="value" position="top" offset={10} style={{ fontSize: 10, fontWeight: 700, fill: '#374151' }} formatter={(v: unknown) => formatNumber(Number(v))} />
+                    </Area>
                     <Line type="monotone" dataKey="ma" name="Media 3m" stroke="#f43f5e" strokeDasharray="5 3" dot={false} strokeWidth={1.5} connectNulls strokeOpacity={0.6} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
 
-              {/* 2. Scatter: Alcance vs Engagement (replaces Nuevos seguidores) */}
-              <div className={chartCardCls}>
+              {/* 2 & 3: Interacciones and Engagement % */}
+              {[
+                { title: 'Interacciones', data: intChart, color: '#f43f5e', gradId: 'igIntGrad', isPercent: false },
+                { title: 'Engagement %', data: erChart, color: '#e11d48', gradId: 'igErGrad', isPercent: true },
+              ].map(({ title, data, color, gradId, isPercent }) => (
+                <div key={title} className={chartCardCls}>
+                  <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">{title}</div>
+                  <ResponsiveContainer width="100%" height={180}>
+                    <AreaChart data={data} margin={{ top: 22, right: 8, left: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor={color} stopOpacity={0.15} />
+                          <stop offset="95%" stopColor={color} stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                      <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => isPercent ? `${v}%` : formatNumber(Number(v))} axisLine={false} tickLine={false} width={isPercent ? 32 : 44} />
+                      <Tooltip formatter={(v, n) => [isPercent ? `${Number(v).toFixed(2)}%` : formatNumber(Number(v)), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                      <Area type="monotone" dataKey="value" name={title} stroke={color} fill={`url(#${gradId})`} strokeWidth={2} dot={{ r: 3, fill: color, strokeWidth: 0 }}>
+                        <LabelList dataKey="value" position="top" offset={8} style={{ fontSize: 9, fontWeight: 700, fill: '#374151' }} formatter={(v: unknown) => isPercent ? `${Number(v).toFixed(1)}%` : formatNumber(Number(v))} />
+                      </Area>
+                      <Line type="monotone" dataKey="ma" name="Media 3m" stroke={color} strokeDasharray="5 3" dot={false} strokeWidth={1.5} connectNulls strokeOpacity={0.6} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              ))}
+
+              {/* 4. Scatter: Alcance vs Engagement — full width */}
+              <div className={chartCardCls + ' lg:col-span-2'}>
                 <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">Alcance vs Engagement</div>
                 {scatterData.pts.length >= 5 ? (
                   <div className="relative">
-                    <ResponsiveContainer width="100%" height={180}>
+                    <ResponsiveContainer width="100%" height={200}>
                       <ScatterChart margin={{ top: 16, right: 8, left: 0, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
                         <XAxis type="number" dataKey="x" name="Views" tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={logTickFmt} ticks={scatterData.xTicks} domain={scatterData.xDomain} axisLine={false} tickLine={false} />
@@ -849,32 +892,6 @@ export default function InstagramPage() {
                   </div>
                 )}
               </div>
-
-              {/* 3 & 4: Interacciones and Engagement % */}
-              {[
-                { title: 'Interacciones', data: intChart, color: '#f43f5e', gradId: 'igIntGrad', isPercent: false },
-                { title: 'Engagement %', data: erChart, color: '#e11d48', gradId: 'igErGrad', isPercent: true },
-              ].map(({ title, data, color, gradId, isPercent }) => (
-                <div key={title} className={chartCardCls}>
-                  <div className="text-xs font-semibold tracking-wider text-gray-500 uppercase mb-3">{title}</div>
-                  <ResponsiveContainer width="100%" height={180}>
-                    <AreaChart data={data} margin={{ top: 16, right: 4, left: 0, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor={color} stopOpacity={0.15} />
-                          <stop offset="95%" stopColor={color} stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                      <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 10, fill: '#9ca3af' }} tickFormatter={v => isPercent ? `${v}%` : formatNumber(Number(v))} axisLine={false} tickLine={false} width={isPercent ? 32 : 44} />
-                      <Tooltip formatter={(v, n) => [isPercent ? `${Number(v).toFixed(2)}%` : formatNumber(Number(v)), n as string]} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                      <Area type="monotone" dataKey="value" name={title} stroke={color} fill={`url(#${gradId})`} strokeWidth={2} dot={{ r: 3, fill: color, strokeWidth: 0 }} />
-                      <Line type="monotone" dataKey="ma" name="Media 3m" stroke={color} strokeDasharray="5 3" dot={false} strokeWidth={1.5} connectNulls strokeOpacity={0.6} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              ))}
             </div>
           )}
 
@@ -1413,10 +1430,19 @@ export default function InstagramPage() {
                           : '—'}
                       </td>
                       <td className="ph-col py-2 px-2 text-right">
-                        {fid
-                          ? <button onClick={() => handleUnfeature(fid)} className="text-amber-400 hover:text-gray-300 transition-colors" title="Quitar de destacados"><Star size={14} fill="currentColor" /></button>
-                          : <button onClick={() => { setFeaturedFormPostId(featuredFormPostId === post.id ? null : post.id); setFeaturedNote('') }} className="text-gray-400 hover:text-amber-400 transition-colors" title="Destacar este post"><Star size={14} /></button>
-                        }
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => { setCollabFormPostId(collabFormPostId === post.id ? null : post.id); setCollabInput(post.collab_account ?? '') }}
+                            className={`transition-colors ${post.type === 'Collab' ? 'text-orange-500 hover:text-orange-600' : 'text-gray-300 hover:text-orange-500'}`}
+                            title="Marcar / editar colaboración con influencer"
+                          >
+                            <Users size={14} />
+                          </button>
+                          {fid
+                            ? <button onClick={() => handleUnfeature(fid)} className="text-amber-400 hover:text-gray-300 transition-colors" title="Quitar de destacados"><Star size={14} fill="currentColor" /></button>
+                            : <button onClick={() => { setFeaturedFormPostId(featuredFormPostId === post.id ? null : post.id); setFeaturedNote('') }} className="text-gray-400 hover:text-amber-400 transition-colors" title="Destacar este post"><Star size={14} /></button>
+                          }
+                        </div>
                       </td>
                       <td className="ph-col py-2 px-2 text-right">
                         <button onClick={() => handleDelete(post.id)}
@@ -1447,6 +1473,39 @@ export default function InstagramPage() {
                               {savingFeatured ? '...' : 'Destacar'}
                             </button>
                             <button onClick={() => { setFeaturedFormPostId(null); setFeaturedNote('') }} className="text-xs text-gray-500 hover:text-gray-700">Cancelar</button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    {collabFormPostId === post.id && (
+                      <tr>
+                        <td colSpan={11} className="px-3 pb-3 pt-1.5 bg-orange-50 border-b border-orange-100">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-medium text-orange-700 whitespace-nowrap">🤝 Colaboración con</span>
+                            <input
+                              type="text"
+                              list="ig-influencer-options"
+                              placeholder="Influencer (ej: Domi Mainhard) — elegí uno existente o escribí uno nuevo"
+                              value={collabInput}
+                              onChange={e => setCollabInput(e.target.value)}
+                              onKeyDown={e => e.key === 'Enter' && saveCollab(post.id, collabInput)}
+                              className="flex-1 min-w-[220px] border border-orange-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-orange-400"
+                              autoFocus
+                            />
+                            <datalist id="ig-influencer-options">
+                              {influencerOptions.map(o => <option key={o} value={o} />)}
+                            </datalist>
+                            <button
+                              onClick={() => saveCollab(post.id, collabInput)}
+                              disabled={!collabInput.trim()}
+                              className="text-xs bg-orange-500 text-white px-3 py-1 rounded-lg font-medium hover:bg-orange-400 disabled:opacity-50 whitespace-nowrap"
+                            >
+                              Marcar collab
+                            </button>
+                            {post.type === 'Collab' && (
+                              <button onClick={() => saveCollab(post.id, '')} className="text-xs text-red-500 hover:text-red-600 whitespace-nowrap">Quitar collab</button>
+                            )}
+                            <button onClick={() => { setCollabFormPostId(null); setCollabInput('') }} className="text-xs text-gray-500 hover:text-gray-700">Cancelar</button>
                           </div>
                         </td>
                       </tr>
