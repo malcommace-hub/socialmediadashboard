@@ -95,9 +95,6 @@ export default function InstagramPage() {
   // Monthly manual fields
   const [followers, setFollowers] = useState('')
   const [newFollowers, setNewFollowers] = useState('')
-  const [viewsApp, setViewsApp] = useState('')      // from Meta app overview
-  const [reachApp, setReachApp] = useState('')       // accounts reached
-  const [interactionsApp, setInteractionsApp] = useState('') // total interactions from Meta app overview
 
   // New manual post (any type, including Collab)
   const [newPost, setNewPost] = useState({ ...emptyNewPost, type: 'Reel' as InstagramPost['type'] })
@@ -159,9 +156,6 @@ export default function InstagramPage() {
       setCollabWithout(collab.withoutAccount)
       setFollowers(String(data.monthly?.total_followers ?? ''))
       setNewFollowers(String(data.monthly?.new_followers ?? ''))
-      setViewsApp(String(data.monthly?.total_views_manual ?? ''))
-      setReachApp(String(data.monthly?.total_reach_manual ?? ''))
-      setInteractionsApp(String((data.monthly as { total_interactions?: number } | null)?.total_interactions || ''))
     } catch (err) {
       setError((err as { message?: string })?.message ?? 'Error al cargar datos de Instagram')
     } finally {
@@ -174,16 +168,13 @@ export default function InstagramPage() {
 
   async function saveMonthly() {
     setSaving(true)
+    // Only followers are manual now; views/interactions/ER come from the posts.
+    // Passing only these keys leaves any existing metric overrides untouched.
     await upsertInstagramMonthly({
       year, month,
       total_followers: parseInt(followers) || 0,
       new_followers: parseInt(newFollowers) || 0,
-      total_views_manual: parseInt(viewsApp) || 0,
-      total_reach_manual: parseInt(reachApp) || 0,
-      total_interactions: parseInt(interactionsApp) || 0,
     })
-    // Invalidate cached history/overview so the KPI, charts, score and overview
-    // reflect the saved totals instead of the stale (pre-save) cache.
     clearCache()
     await load()
     setEditMonthly(false)
@@ -205,6 +196,7 @@ export default function InstagramPage() {
       comments: parseInt(src.comments) || 0,
       shares: parseInt(src.shares) || 0,
       saves: parseInt(src.saves) || 0,
+      follows: 0,
       permalink: src.permalink || null,
       collab_account: src.collab_account || null,
       is_manual: true,
@@ -761,39 +753,19 @@ export default function InstagramPage() {
 
           {/* Datos del mes + Rendimiento por tipo — side by side */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6 items-start">
-          {/* Monthly manual data card */}
+          {/* Monthly data card */}
           <Card>
-            <div className="flex items-center justify-between mb-3">
-              <CardTitle>Datos del mes (desde la app)</CardTitle>
+            <div className="flex items-center justify-between mb-1">
+              <CardTitle>Datos del mes</CardTitle>
               <button onClick={() => setEditMonthly(!editMonthly)}
                 className="presentation-hide flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 font-medium">
-                <PencilLine size={12} /> {editMonthly ? 'Cancelar' : 'Editar'}
+                <PencilLine size={12} /> {editMonthly ? 'Cancelar' : 'Editar seguidores'}
               </button>
             </div>
+            <p className="text-xs text-gray-400 mb-3">Views, interacciones y ER se calculan automáticamente sumando el CSV de contenidos. Los seguidores se cargan a mano.</p>
 
             {editMonthly ? (
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                <div>
-                  <label className="text-xs text-gray-500 block mb-1">
-                    Views totales (app)
-                    <span className="ml-1 text-gray-400 cursor-help" title="Ingresá el total del Meta overview. No incluyas posts de colaboraciones externas — esos se agregan automáticamente.">ⓘ</span>
-                  </label>
-                  <input type="number" value={viewsApp} onChange={e => setViewsApp(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500 block mb-1">Accounts reached</label>
-                  <input type="number" value={reachApp} onChange={e => setReachApp(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500 block mb-1">
-                    Interacciones (app)
-                    <span className="ml-1 text-gray-400 cursor-help" title="Total de interacciones del Meta overview. No incluyas colaboraciones externas — esas se suman automáticamente.">ⓘ</span>
-                  </label>
-                  <input type="number" value={interactionsApp} onChange={e => setInteractionsApp(e.target.value)}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
-                </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-gray-500 block mb-1">Seguidores totales</label>
                   <input type="number" value={followers} onChange={e => setFollowers(e.target.value)}
@@ -804,7 +776,7 @@ export default function InstagramPage() {
                   <input type="number" value={newFollowers} onChange={e => setNewFollowers(e.target.value)}
                     className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                 </div>
-                <div className="col-span-2 lg:col-span-4 flex gap-2 pt-1">
+                <div className="col-span-2 flex gap-2 pt-1">
                   <button onClick={saveMonthly} disabled={saving}
                     className="bg-emerald-500 text-white px-5 py-1.5 rounded-lg text-sm font-medium hover:bg-emerald-400 disabled:opacity-50">
                     {saving ? 'Guardando...' : 'Guardar'}
@@ -812,23 +784,21 @@ export default function InstagramPage() {
                 </div>
               </div>
             ) : (
-              <div className="flex flex-wrap gap-8">
+              <div className="flex flex-wrap gap-x-8 gap-y-4">
                 <div>
-                  <div className="text-2xl font-bold">{formatNumber(appViews)}</div>
-                  <div className="text-xs text-gray-400">Views (app)</div>
+                  <div className="text-2xl font-bold text-gray-900">{formatNumber(grandTotal)}</div>
+                  <div className="text-xs text-gray-400">Views</div>
                 </div>
-                {collabViewsSum > 0 && (
-                  <div>
-                    <div className="text-2xl font-bold text-orange-500">+{formatNumber(collabViewsSum)}</div>
-                    <div className="text-xs text-gray-400">Collabs externos</div>
-                  </div>
-                )}
                 <div>
-                  <div className="text-2xl font-bold text-emerald-600">{formatNumber(grandTotal)}</div>
-                  <div className="text-xs text-gray-400">Total reportado</div>
+                  <div className="text-2xl font-bold text-gray-900">{formatNumber(stats?.totalInteractions ?? 0)}</div>
+                  <div className="text-xs text-gray-400">Interacciones</div>
+                </div>
+                <div>
+                  <div className="text-2xl font-bold text-blue-600">{stats?.avgER ? formatPercent(stats.avgER) : '—'}</div>
+                  <div className="text-xs text-gray-400">ER%</div>
                 </div>
                 <div className="border-l border-gray-100 pl-8">
-                  <div className="text-2xl font-bold">{formatNumber(stats?.monthly?.total_followers ?? 0)}</div>
+                  <div className="text-2xl font-bold text-gray-900">{formatNumber(stats?.monthly?.total_followers ?? 0)}</div>
                   <div className="text-xs text-gray-400">Seguidores</div>
                 </div>
                 <div>

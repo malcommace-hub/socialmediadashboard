@@ -29,6 +29,7 @@ create table if not exists instagram_posts (
   comments int default 0,
   shares int default 0,
   saves int default 0,
+  follows int default 0,
   permalink text unique, -- deduplication key
   collab_account text, -- e.g. "@sofijobs"
   is_manual boolean default false,

@@ -4,7 +4,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { MonthSelector } from '@/components/ui/month-selector'
 import { parseInstagramCSV, parseLinkedInCSV, parseLinkedInXLS, parseLinkedInXLSWithDebug, parseTikTokCSV, parseTikTokOverviewCSV, parseTikTokFollowerHistoryCSV, type LinkedInDebugInfo } from '@/lib/parsers'
 import {
-  upsertInstagramPosts, upsertLinkedInPosts, upsertTikTokVideos, upsertTikTokMonthly,
+  upsertInstagramPosts, clearInstagramMonthlyMetrics, upsertLinkedInPosts, upsertTikTokVideos, upsertTikTokMonthly,
   getYouTubeMonthly, upsertYouTubeMonthly,
   getNewsletterData, upsertNewsletterMonthly, addNewsletterEpisode, deleteNewsletterEpisode,
   getWebData, upsertWebMonthly, upsertWebUtmSource,
@@ -196,12 +196,16 @@ export default function UploadPage() {
         comments: row.comments,
         shares: row.shares,
         saves: row.saves,
+        follows: row.follows,
         permalink: row.permalink,
         collab_account: row.collab_account,
         is_manual: false,
       }))
       const { error } = await upsertInstagramPosts(posts)
       if (error) throw error
+      // Switch this month to be driven by the sum of its posts (clears any manual
+      // view/interaction overrides) so re-uploading updates the numbers.
+      await clearInstagramMonthlyMetrics(year, month)
       clearCache()
       setIg(s => ({ ...s, status: 'done' }))
     } catch (err) {

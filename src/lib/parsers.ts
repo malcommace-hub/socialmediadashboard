@@ -31,6 +31,7 @@ export interface RawInstagramRow {
   comments: number
   shares: number
   saves: number
+  follows: number
   collab_account: string | null
 }
 
@@ -99,6 +100,7 @@ export function parseInstagramCSV(text: string): RawInstagramRow[] {
       comments: num(pick(row, ['comments', 'comentarios'])),
       shares:   num(pick(row, ['shares', 'veces_que_se_compartio'])),
       saves:    num(pick(row, ['saves', 'veces_que_se_guardo'])),
+      follows:  num(pick(row, ['follows', 'seguimientos', 'seguidores'])),
       collab_account,
     }
   }).filter(r => r.permalink || r.description)

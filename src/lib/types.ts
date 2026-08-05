@@ -27,6 +27,7 @@ export interface InstagramPost {
   comments: number
   shares: number
   saves: number
+  follows: number
   permalink: string | null
   collab_account: string | null
   is_manual: boolean
