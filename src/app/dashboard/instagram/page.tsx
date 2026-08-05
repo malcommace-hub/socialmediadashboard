@@ -107,7 +107,6 @@ export default function InstagramPage() {
   const [collabComparison, setCollabComparison] = useState<CollabRow[]>([])
   const [collabWithout, setCollabWithout] = useState(0)
   const [collabsOpen, setCollabsOpen] = useState(false)
-  const [weeklyOpen, setWeeklyOpen] = useState(false)
   const [presentationMode, setPresentationMode] = useState(false)
   const [expandedCollab, setExpandedCollab] = useState<string | null>(null)
   const [collabPostsMap, setCollabPostsMap] = useState<Record<string, InstagramPost[]>>({})
@@ -123,6 +122,7 @@ export default function InstagramPage() {
   const [prevStats, setPrevStats] = useState<InstagramStats | null>(null)
   const [loadingCompare, setLoadingCompare] = useState(false)
   const [distOpen, setDistOpen] = useState(false)
+  const [distBucket, setDistBucket] = useState<string | null>(null)
 
   useEffect(() => {
     getInfluencerNames().then(setInfluencerOptions).catch(() => {})
@@ -409,30 +409,6 @@ export default function InstagramPage() {
       .sort((a, b) => b.avgViews - a.avgViews)
   }, [stats])
 
-  const weeklyActivity = useMemo(() => {
-    const withDate = regularPosts.filter(p => p.post_date)
-    if (withDate.length < 5) return null
-    const defs = [
-      { label: 'Sem 1', range: '1–7', lo: 1, hi: 7 },
-      { label: 'Sem 2', range: '8–14', lo: 8, hi: 14 },
-      { label: 'Sem 3', range: '15–21', lo: 15, hi: 21 },
-      { label: 'Sem 4', range: '22–28', lo: 22, hi: 28 },
-      { label: 'Sem 5', range: '29–31', lo: 29, hi: 31 },
-    ]
-    return defs.map(def => {
-      const bucket = withDate.filter(p => {
-        const d = new Date(p.post_date! + 'T12:00:00Z').getUTCDate()
-        return d >= def.lo && d <= def.hi
-      })
-      return {
-        label: def.label, range: def.range,
-        count: bucket.length,
-        totalViews: bucket.reduce((a, p) => a + p.views, 0),
-        avgER: bucket.length ? bucket.reduce((a, p) => a + erForPost(p), 0) / bucket.length : 0,
-      }
-    }).filter(w => w.count > 0)
-  }, [regularPosts])
-
   const contentInsight = useMemo(() => {
     if (typeBreakdown.length < 2) return null
     const collab = typeBreakdown.find(t => t.type === 'Collab')
@@ -564,19 +540,10 @@ export default function InstagramPage() {
     const buckets = ranges.map(r => ({
       label: r.label,
       count: nonCollab.filter(p => p.views >= r.lo && p.views < r.hi).length,
+      posts: nonCollab.filter(p => p.views >= r.lo && p.views < r.hi).sort((a, b) => b.views - a.views),
     })).filter(b => b.count > 0)
     if (buckets.length < 2) return null
-
-    const totalViews = nonCollab.reduce((a, p) => a + p.views, 0)
-    const topPost = [...nonCollab].sort((a, b) => b.views - a.views)[0]
-    const topShare = totalViews > 0 && topPost ? topPost.views / totalViews : 0
-    const insight = topShare > 0.5
-      ? `El alcance está concentrado en 1 post — el mes depende de un solo contenido`
-      : topShare < 0.3
-      ? `Alcance bien distribuido entre los posts del mes`
-      : null
-
-    return { buckets, insight }
+    return { buckets }
   }, [regularPosts])
 
   const chartCardCls = 'bg-white rounded-2xl border border-gray-100 p-4 shadow-sm'
@@ -1037,76 +1004,188 @@ export default function InstagramPage() {
             </Card>
           )}
 
-          {/* Weekly activity */}
-          {weeklyActivity && weeklyActivity.length > 0 && (
-            <Card className="mb-6">
-              <div
-                className="flex items-center justify-between cursor-pointer select-none"
-                onClick={() => setWeeklyOpen(o => !o)}
-              >
-                <span className="text-sm font-semibold text-gray-700">Actividad semanal</span>
-                <span className="text-gray-400">{weeklyOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</span>
-              </div>
-              {weeklyOpen && (
-                <div className="mt-4 overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-100">
-                        <th className="text-left py-2 px-3 text-xs font-medium text-gray-400">Semana</th>
-                        <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Posts</th>
-                        <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Views totales</th>
-                        <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">ER% promedio</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {weeklyActivity.map(w => (
-                        <tr key={w.label} className="border-b border-gray-50 hover:bg-gray-50">
-                          <td className="py-2 px-3 text-gray-700">
-                            <span className="font-medium">{w.label}</span>
-                            <span className="text-gray-400 text-xs ml-1">({w.range})</span>
-                          </td>
-                          <td className="py-2 px-3 text-right text-gray-700">{w.count}</td>
-                          <td className="py-2 px-3 text-right font-medium">{formatNumber(w.totalViews)}</td>
-                          <td className="py-2 px-3 text-right text-gray-600">{formatPercent(w.avgER)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </Card>
-          )}
-
-          {viewsDist && (
-            <Card className="mb-6">
-              <div
-                className="flex items-center justify-between cursor-pointer select-none"
-                onClick={() => setDistOpen(o => !o)}
-              >
-                <span className="text-sm font-semibold text-gray-700">Distribución de alcance</span>
-                <span className="text-gray-400">{distOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</span>
-              </div>
-              {distOpen && (
-                <div className="mt-4">
-                  <ResponsiveContainer width="100%" height={160}>
-                    <BarChart data={viewsDist.buckets} layout="vertical" margin={{ top: 0, right: 20, left: 0, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f3f4f6" />
-                      <XAxis type="number" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-                      <YAxis type="category" dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} width={60} />
-                      <Tooltip formatter={(v) => [`${v} posts`, 'Posts']} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
-                      <Bar dataKey="count" name="Posts" fill="#f43f5e" radius={[0, 4, 4, 0]}>
-                        <LabelList dataKey="count" position="right" style={{ fontSize: 11, fontWeight: 700, fill: '#374151' }} />
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                  {viewsDist.insight && (
-                    <div className="mt-3 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
-                      {viewsDist.insight}
+          {/* Distribución de alcance + Colaboradores — side-by-side collapsible panels */}
+          {(viewsDist || collabComparison.length >= 2) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6 items-start">
+              {viewsDist && (
+                <Card>
+                  <div
+                    className="flex items-center justify-between cursor-pointer select-none"
+                    onClick={() => setDistOpen(o => !o)}
+                  >
+                    <span className="text-sm font-semibold text-gray-700">Distribución de alcance</span>
+                    <span className="text-gray-400">{distOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</span>
+                  </div>
+                  {distOpen && (
+                    <div className="mt-4">
+                      <ResponsiveContainer width="100%" height={160}>
+                        <BarChart data={viewsDist.buckets} layout="vertical" margin={{ top: 0, right: 20, left: 0, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f3f4f6" />
+                          <XAxis type="number" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+                          <YAxis type="category" dataKey="label" tick={{ fontSize: 10, fill: '#9ca3af' }} axisLine={false} tickLine={false} width={60} />
+                          <Tooltip formatter={(v) => [`${v} posts`, 'Posts']} contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                          <Bar
+                            dataKey="count" name="Posts" fill="#f43f5e" radius={[0, 4, 4, 0]}
+                            cursor="pointer"
+                            onClick={(d: { label?: string; payload?: { label?: string } }) => {
+                              const label = d?.label ?? d?.payload?.label ?? null
+                              setDistBucket(cur => cur === label ? null : label)
+                            }}
+                          >
+                            <LabelList dataKey="count" position="right" style={{ fontSize: 11, fontWeight: 700, fill: '#374151' }} />
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                      <div className="text-[11px] text-gray-400 mt-1 px-1">Tocá una barra para ver los contenidos de ese rango.</div>
+                      {distBucket && (() => {
+                        const b = viewsDist.buckets.find(x => x.label === distBucket)
+                        if (!b) return null
+                        return (
+                          <div className="mt-3 border-t border-gray-100 pt-3">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="text-xs font-semibold text-gray-600">Contenidos en {distBucket} ({b.count})</div>
+                              <button onClick={() => setDistBucket(null)} className="text-xs text-gray-400 hover:text-gray-600">✕ cerrar</button>
+                            </div>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="border-b border-gray-100 text-gray-400">
+                                    <th className="text-left py-1 px-2 font-medium">Contenido</th>
+                                    <th className="text-left py-1 px-2 font-medium">Fecha</th>
+                                    <th className="text-right py-1 px-2 font-medium">Views</th>
+                                    <th className="text-right py-1 px-2 font-medium">ER%</th>
+                                    <th className="py-1 px-2 w-6" />
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {b.posts.map(p => (
+                                    <tr key={p.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
+                                      <td className="py-1.5 px-2 text-gray-700 max-w-[220px] truncate">
+                                        <Badge variant={p.type.toLowerCase() as 'reel' | 'post' | 'collab' | 'story'} className="mr-1">{p.type}</Badge>
+                                        {p.description || '—'}
+                                      </td>
+                                      <td className="py-1.5 px-2 text-gray-500 whitespace-nowrap">{p.post_date ?? '—'}</td>
+                                      <td className="py-1.5 px-2 text-right font-medium">{formatNumber(p.views)}</td>
+                                      <td className="py-1.5 px-2 text-right text-emerald-600">{formatPercent(erForPost(p))}</td>
+                                      <td className="py-1.5 px-2 text-right">
+                                        {p.permalink && !p.permalink.startsWith('manual:')
+                                          ? <a href={p.permalink} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 inline-flex"><ExternalLink size={12} /></a>
+                                          : null}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )
+                      })()}
                     </div>
                   )}
-                </div>
+                </Card>
               )}
-            </Card>
+
+              {collabComparison.length >= 2 && (
+                <Card>
+                  <div
+                    className="flex items-center justify-between cursor-pointer select-none"
+                    onClick={() => setCollabsOpen(o => !o)}
+                  >
+                    <CardTitle>Colaboradores</CardTitle>
+                    <span className="text-gray-400">{collabsOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</span>
+                  </div>
+                  {collabsOpen && (
+                    <div className="mt-3">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-gray-100">
+                              <th className="text-left py-2 px-3 text-xs font-medium text-gray-400">Colaborador</th>
+                              <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Collabs</th>
+                              <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Views prom.</th>
+                              <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">ER% prom.</th>
+                              <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Score</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {collabComparison.map(row => (
+                              <Fragment key={row.account}>
+                                <tr
+                                  className="border-b border-gray-50 hover:bg-orange-50 cursor-pointer select-none"
+                                  onClick={() => handleCollabExpand(row.account)}
+                                >
+                                  <td className="py-2 px-3 font-medium text-orange-600 flex items-center gap-1">
+                                    {expandedCollab === row.account ? <ChevronUp size={13} className="text-gray-400 shrink-0" /> : <ChevronDown size={13} className="text-gray-400 shrink-0" />}
+                                    {row.account}
+                                  </td>
+                                  <td className="py-2 px-3 text-right text-gray-700">{row.count}</td>
+                                  <td className="py-2 px-3 text-right font-medium">{formatNumber(Math.round(row.avgViews))}</td>
+                                  <td className="py-2 px-3 text-right text-gray-600">{formatPercent(row.avgER)}</td>
+                                  <td className="py-2 px-3 text-right">
+                                    {(() => {
+                                      const s = collabScores[row.account]
+                                      if (s === undefined) return '—'
+                                      const cls = s >= 80 ? 'text-emerald-600' : s >= 60 ? 'text-green-600' : s >= 40 ? 'text-amber-600' : 'text-red-500'
+                                      return <span className={`font-bold ${cls}`}>{s}</span>
+                                    })()}
+                                  </td>
+                                </tr>
+                                {expandedCollab === row.account && (
+                                  <tr key={`${row.account}-detail`}>
+                                    <td colSpan={5} className="px-3 pb-3 pt-1 bg-orange-50/60">
+                                      {loadingCollab === row.account ? (
+                                        <div className="text-xs text-gray-400 py-2">Cargando posts...</div>
+                                      ) : (
+                                        <table className="w-full text-xs">
+                                          <thead>
+                                            <tr className="border-b border-orange-100">
+                                              <th className="text-left py-1.5 px-2 font-medium text-gray-400">#</th>
+                                              <th className="text-left py-1.5 px-2 font-medium text-gray-400">Descripción</th>
+                                              <th className="text-left py-1.5 px-2 font-medium text-gray-400">Mes</th>
+                                              <th className="text-right py-1.5 px-2 font-medium text-gray-400">Views</th>
+                                              <th className="text-right py-1.5 px-2 font-medium text-gray-400">ER%</th>
+                                              <th className="py-1.5 px-2 w-6" />
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {(collabPostsMap[row.account] ?? []).map((p, idx) => (
+                                              <tr key={p.id} className="border-b border-orange-50 last:border-0">
+                                                <td className="py-1.5 px-2 text-gray-400">{idx + 1}</td>
+                                                <td className="py-1.5 px-2 text-gray-700 max-w-[200px] truncate">{p.description || '—'}</td>
+                                                <td className="py-1.5 px-2 text-gray-500 whitespace-nowrap">{shortMonthLabel(p.year, p.month)}</td>
+                                                <td className="py-1.5 px-2 text-right font-medium">{formatNumber(p.views)}</td>
+                                                <td className="py-1.5 px-2 text-right text-emerald-600">{formatPercent(erForPost(p))}</td>
+                                                <td className="py-1.5 px-2 text-right">
+                                                  {p.permalink && !p.permalink.startsWith('manual:')
+                                                    ? <a href={p.permalink} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 inline-flex"><ExternalLink size={12} /></a>
+                                                    : null}
+                                                </td>
+                                              </tr>
+                                            ))}
+                                            {(collabPostsMap[row.account] ?? []).length === 0 && (
+                                              <tr><td colSpan={6} className="py-3 text-center text-gray-400">Sin posts registrados</td></tr>
+                                            )}
+                                          </tbody>
+                                        </table>
+                                      )}
+                                    </td>
+                                  </tr>
+                                )}
+                              </Fragment>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      {collabWithout > 0 && (
+                        <p className="text-xs text-gray-400 mt-2 px-1">
+                          {collabWithout} collab{collabWithout !== 1 ? 's' : ''} sin cuenta registrada no aparece{collabWithout !== 1 ? 'n' : ''} en esta tabla.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </Card>
+              )}
+            </div>
           )}
 
           {/* Regular posts table */}
@@ -1367,109 +1446,6 @@ export default function InstagramPage() {
               </table>
             </div>
           </Card>
-
-          {/* Colaboradores comparison (all-time, 2+ accounts required) */}
-          {collabComparison.length >= 2 && (
-            <Card>
-              <div
-                className="flex items-center justify-between cursor-pointer select-none"
-                onClick={() => setCollabsOpen(o => !o)}
-              >
-                <CardTitle>Colaboradores</CardTitle>
-                <span className="text-gray-400">{collabsOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</span>
-              </div>
-              {collabsOpen && (
-                <div className="mt-3">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-gray-100">
-                          <th className="text-left py-2 px-3 text-xs font-medium text-gray-400">Colaborador</th>
-                          <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Collabs</th>
-                          <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Views promedio</th>
-                          <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">ER% promedio</th>
-                          <th className="text-right py-2 px-3 text-xs font-medium text-gray-400">Score</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {collabComparison.map(row => (
-                          <>
-                            <tr
-                              key={row.account}
-                              className="border-b border-gray-50 hover:bg-orange-50 cursor-pointer select-none"
-                              onClick={() => handleCollabExpand(row.account)}
-                            >
-                              <td className="py-2 px-3 font-medium text-orange-600 flex items-center gap-1">
-                                {expandedCollab === row.account ? <ChevronUp size={13} className="text-gray-400 shrink-0" /> : <ChevronDown size={13} className="text-gray-400 shrink-0" />}
-                                {row.account}
-                              </td>
-                              <td className="py-2 px-3 text-right text-gray-700">{row.count}</td>
-                              <td className="py-2 px-3 text-right font-medium">{formatNumber(Math.round(row.avgViews))}</td>
-                              <td className="py-2 px-3 text-right text-gray-600">{formatPercent(row.avgER)}</td>
-                              <td className="py-2 px-3 text-right">
-                                {(() => {
-                                  const s = collabScores[row.account]
-                                  if (s === undefined) return '—'
-                                  const cls = s >= 80 ? 'text-emerald-600' : s >= 60 ? 'text-green-600' : s >= 40 ? 'text-amber-600' : 'text-red-500'
-                                  return <span className={`font-bold ${cls}`}>{s}</span>
-                                })()}
-                              </td>
-                            </tr>
-                            {expandedCollab === row.account && (
-                              <tr key={`${row.account}-detail`}>
-                                <td colSpan={5} className="px-3 pb-3 pt-1 bg-orange-50/60">
-                                  {loadingCollab === row.account ? (
-                                    <div className="text-xs text-gray-400 py-2">Cargando posts...</div>
-                                  ) : (
-                                    <table className="w-full text-xs">
-                                      <thead>
-                                        <tr className="border-b border-orange-100">
-                                          <th className="text-left py-1.5 px-2 font-medium text-gray-400">#</th>
-                                          <th className="text-left py-1.5 px-2 font-medium text-gray-400">Descripción</th>
-                                          <th className="text-left py-1.5 px-2 font-medium text-gray-400">Mes</th>
-                                          <th className="text-right py-1.5 px-2 font-medium text-gray-400">Views</th>
-                                          <th className="text-right py-1.5 px-2 font-medium text-gray-400">ER%</th>
-                                          <th className="py-1.5 px-2 w-6" />
-                                        </tr>
-                                      </thead>
-                                      <tbody>
-                                        {(collabPostsMap[row.account] ?? []).map((p, idx) => (
-                                          <tr key={p.id} className="border-b border-orange-50 last:border-0">
-                                            <td className="py-1.5 px-2 text-gray-400">{idx + 1}</td>
-                                            <td className="py-1.5 px-2 text-gray-700 max-w-[200px] truncate">{p.description || '—'}</td>
-                                            <td className="py-1.5 px-2 text-gray-500 whitespace-nowrap">{shortMonthLabel(p.year, p.month)}</td>
-                                            <td className="py-1.5 px-2 text-right font-medium">{formatNumber(p.views)}</td>
-                                            <td className="py-1.5 px-2 text-right text-emerald-600">{formatPercent(erForPost(p))}</td>
-                                            <td className="py-1.5 px-2 text-right">
-                                              {p.permalink && !p.permalink.startsWith('manual:')
-                                                ? <a href={p.permalink} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 inline-flex"><ExternalLink size={12} /></a>
-                                                : null}
-                                            </td>
-                                          </tr>
-                                        ))}
-                                        {(collabPostsMap[row.account] ?? []).length === 0 && (
-                                          <tr><td colSpan={6} className="py-3 text-center text-gray-400">Sin posts registrados</td></tr>
-                                        )}
-                                      </tbody>
-                                    </table>
-                                  )}
-                                </td>
-                              </tr>
-                            )}
-                          </>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                  {collabWithout > 0 && (
-                    <p className="text-xs text-gray-400 mt-2 px-1">
-                      {collabWithout} collab{collabWithout !== 1 ? 's' : ''} sin cuenta registrada no aparece{collabWithout !== 1 ? 'n' : ''} en esta tabla.
-                    </p>
-                  )}
-                </div>
-              )}
-            </Card>
-          )}
         </>
       )}
     </div>
