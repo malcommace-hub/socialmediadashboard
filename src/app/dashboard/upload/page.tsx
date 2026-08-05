@@ -220,7 +220,12 @@ export default function UploadPage() {
     if (!file) return
     setIgInt({ ...emptyState, status: 'parsing' })
     try {
-      const text = await file.text()
+      // Meta exports this file as UTF-16; decode by BOM (falls back to UTF-8).
+      const buf = await file.arrayBuffer()
+      const b = new Uint8Array(buf)
+      const text = (b[0] === 0xFF && b[1] === 0xFE) ? new TextDecoder('utf-16le').decode(buf)
+        : (b[0] === 0xFE && b[1] === 0xFF) ? new TextDecoder('utf-16be').decode(buf)
+        : new TextDecoder('utf-8').decode(buf)
       const parsed = parseInstagramInteractionsCSV(text)
       if (parsed.year && parsed.month) { setYear(parsed.year); setMonth(parsed.month) }
       setIgInt({ status: 'preview', rowCount: 1, preview: [parsed] })
