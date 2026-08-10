@@ -3,11 +3,11 @@ import { useEffect, useState, useCallback, useMemo, Fragment } from 'react'
 import { MonthSelector } from '@/components/ui/month-selector'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { getLinkedInStats, getLinkedInHistory, deleteLinkedInPost, upsertLinkedInMonthlyTotals, getLinkedInPostDates, addFeaturedContent, getFeaturedContent, deleteFeaturedContent } from '@/lib/queries'
-import { formatNumber, formatPercent, monthLabel, shortMonthLabel, movingAvg, pctChange } from '@/lib/utils'
+import { getLinkedInStats, getLinkedInHistory, deleteLinkedInPost, upsertLinkedInMonthlyTotals, getLinkedInPostDates, addFeaturedContent, getFeaturedContent, deleteFeaturedContent, getLinkedInPostsByDateRange, getLinkedInLatestPostDate } from '@/lib/queries'
+import { formatNumber, formatPercent, monthLabel, shortMonthLabel, movingAvg, pctChange, toMonday, addDaysISO, weekRangeLabel } from '@/lib/utils'
 import { useMesParam } from '@/hooks/useMesParam'
 import type { LinkedInStats, LinkedInPost } from '@/lib/types'
-import { Trash2, ExternalLink, ChevronUp, ChevronDown, Upload, Plus, PencilLine, RefreshCw, Star } from 'lucide-react'
+import { Trash2, ExternalLink, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Upload, Plus, PencilLine, RefreshCw, Star } from 'lucide-react'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LabelList, AreaChart, Area,
@@ -79,6 +79,9 @@ function TrendBadge({ value, prev }: { value: number; prev: number | undefined }
 export default function LinkedInPage() {
   const { year, month, setYear, setMonth } = useMesParam()
   const [stats, setStats] = useState<LinkedInStats | null>(null)
+  const [weekMonday, setWeekMonday] = useState<string | null>(null)
+  const [weekPosts, setWeekPosts] = useState<LinkedInPost[]>([])
+  const [weekLoading, setWeekLoading] = useState(false)
   const [history, setHistory] = useState<HistoryPoint[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -135,6 +138,19 @@ export default function LinkedInPage() {
   }, [year, month])
 
   useEffect(() => { load() }, [load])
+
+  // Weekly review: anchor to the latest post's week, then navigate.
+  useEffect(() => {
+    getLinkedInLatestPostDate().then(d => { if (d) setWeekMonday(toMonday(d)) }).catch(() => {})
+  }, [])
+  useEffect(() => {
+    if (!weekMonday) return
+    setWeekLoading(true)
+    getLinkedInPostsByDateRange(weekMonday, addDaysISO(weekMonday, 6))
+      .then(setWeekPosts).catch(() => setWeekPosts([])).finally(() => setWeekLoading(false))
+  }, [weekMonday])
+  const weekImpr = weekPosts.reduce((a, p) => a + (p.impressions ?? 0), 0)
+  const weekER = weekPosts.length ? weekPosts.reduce((a, p) => a + (p.er_decimal ?? 0) * 100, 0) / weekPosts.length : 0
   useEffect(() => { setSelected(new Set()) }, [year, month])
 
   async function saveMonthly() {
@@ -512,6 +528,69 @@ export default function LinkedInPage() {
               </ResponsiveContainer>
             </div>
           )}
+
+          {/* Repaso semanal */}
+          <Card className="mb-6">
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <div>
+                <CardTitle>Repaso semanal</CardTitle>
+                <p className="text-xs text-gray-400 mt-0.5">Contenidos publicados en la semana seleccionada.</p>
+              </div>
+              {weekMonday && (
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setWeekMonday(m => m ? addDaysISO(m, -7) : m)}
+                    className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors"><ChevronLeft size={15} /></button>
+                  <span className="text-sm font-medium text-gray-700 whitespace-nowrap">{weekRangeLabel(weekMonday)}</span>
+                  <button onClick={() => setWeekMonday(m => m ? addDaysISO(m, 7) : m)}
+                    className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors"><ChevronRight size={15} /></button>
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              {[
+                { label: 'Contenidos', value: String(weekPosts.length) },
+                { label: 'Impresiones', value: formatNumber(weekImpr) },
+                { label: 'ER% promedio', value: weekER > 0 ? formatPercent(weekER) : '—' },
+              ].map(s => (
+                <div key={s.label} className="bg-gray-50 rounded-xl border border-gray-100 p-3">
+                  <div className="text-[11px] text-gray-500 uppercase tracking-wide mb-1">{s.label}</div>
+                  <div className="text-xl font-bold text-gray-900">{s.value}</div>
+                </div>
+              ))}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 text-gray-400">
+                    <th className="text-left py-2 px-2 text-xs font-medium">Contenido</th>
+                    <th className="text-left py-2 px-2 text-xs font-medium">Fecha</th>
+                    <th className="text-right py-2 px-2 text-xs font-medium">Impresiones</th>
+                    <th className="text-right py-2 px-2 text-xs font-medium">Interacc.</th>
+                    <th className="text-right py-2 px-2 text-xs font-medium">ER%</th>
+                    <th className="py-2 px-2 w-6" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {weekLoading ? (
+                    <tr><td colSpan={6} className="py-6 text-center text-gray-400 text-xs">Cargando…</td></tr>
+                  ) : weekPosts.length === 0 ? (
+                    <tr><td colSpan={6} className="py-6 text-center text-gray-400 text-xs">No hay contenidos publicados en esta semana.</td></tr>
+                  ) : weekPosts.map(p => (
+                    <tr key={p.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
+                      <td className="py-2 px-2 max-w-[320px] truncate text-gray-700">{p.title || '(sin título)'}</td>
+                      <td className="py-2 px-2 text-gray-500 whitespace-nowrap">{p.post_date ?? '—'}</td>
+                      <td className="py-2 px-2 text-right font-medium">{formatNumber(p.impressions)}</td>
+                      <td className="py-2 px-2 text-right text-gray-600">{formatNumber(p.interactions)}</td>
+                      <td className="py-2 px-2 text-right text-blue-600">{formatPercent(p.er_decimal * 100)}</td>
+                      <td className="py-2 px-2 text-right">
+                        {p.permalink ? <a href={p.permalink} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 inline-flex"><ExternalLink size={13} /></a> : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
 
           {/* Monthly data card */}
           <Card className="mb-6">

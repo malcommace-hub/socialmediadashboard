@@ -52,6 +52,25 @@ export function pctChange(current: number, prev: number): number | null {
   return ((current - prev) / prev) * 100
 }
 
+// ── Week helpers (ISO 'YYYY-MM-DD', week = Monday–Sunday) ──
+export function toMonday(dateStr: string): string {
+  const d = new Date(dateStr + 'T12:00:00Z')
+  const day = d.getUTCDay() // 0=Sun
+  d.setUTCDate(d.getUTCDate() - (day === 0 ? 6 : day - 1))
+  return d.toISOString().slice(0, 10)
+}
+export function addDaysISO(dateStr: string, days: number): string {
+  const d = new Date(dateStr + 'T12:00:00Z')
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+export function weekRangeLabel(mondayStr: string): string {
+  const s = new Date(mondayStr + 'T12:00:00Z')
+  const e = new Date(addDaysISO(mondayStr, 6) + 'T12:00:00Z')
+  const fmt = (dt: Date) => `${dt.getUTCDate()} ${SHORT_MONTHS[dt.getUTCMonth()]}`
+  return `${fmt(s)} – ${fmt(e)} ${e.getUTCFullYear()}`
+}
+
 // Computes ER from a list of posts where each has impressions and interactions.
 // Uses average of individual ER values (not aggregate), matching LinkedIn's methodology.
 export function computeAvgER(posts: { impressions: number; interactions: number }[]): number {

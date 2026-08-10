@@ -197,6 +197,19 @@ export async function deleteLinkedInPost(id: string) {
   return supabase.from('linkedin_posts').delete().eq('id', id)
 }
 
+// Weekly review: LinkedIn posts by publish-date range (spans months).
+export async function getLinkedInPostsByDateRange(startDate: string, endDate: string) {
+  const { data } = await supabase.from('linkedin_posts').select('*')
+    .gte('post_date', startDate).lte('post_date', endDate)
+    .order('impressions', { ascending: false })
+  return (data ?? []) as LinkedInPost[]
+}
+export async function getLinkedInLatestPostDate(): Promise<string | null> {
+  const { data } = await supabase.from('linkedin_posts').select('post_date')
+    .not('post_date', 'is', null).order('post_date', { ascending: false }).limit(1).maybeSingle()
+  return (data as { post_date: string | null } | null)?.post_date ?? null
+}
+
 // ─── TikTok ──────────────────────────────────
 
 export async function getTikTokStats(filter: MonthlyFilter) {
@@ -247,6 +260,19 @@ export async function addTikTokVideoManual(video: Omit<TikTokVideo, 'id'>) {
 
 export async function deleteTikTokVideo(id: string) {
   return supabase.from('tiktok_videos').delete().eq('id', id)
+}
+
+// Weekly review: TikTok videos by publish-date range (spans months).
+export async function getTikTokVideosByDateRange(startDate: string, endDate: string) {
+  const { data } = await supabase.from('tiktok_videos').select('*')
+    .gte('video_date', startDate).lte('video_date', endDate)
+    .order('views', { ascending: false })
+  return (data ?? []) as TikTokVideo[]
+}
+export async function getTikTokLatestVideoDate(): Promise<string | null> {
+  const { data } = await supabase.from('tiktok_videos').select('video_date')
+    .not('video_date', 'is', null).order('video_date', { ascending: false }).limit(1).maybeSingle()
+  return (data as { video_date: string | null } | null)?.video_date ?? null
 }
 
 // ─── YouTube ─────────────────────────────────
@@ -334,11 +360,12 @@ export async function upsertObjective(data: { year: number; quarter: number; cha
 export async function getOverviewHistory() {
   type Item = { year: number; month: number; igImpressions: number; igInteractions: number; igNewFollowers: number; igTotalFollowers: number; igER: number; liImpressions: number; liInteractions: number; liNewFollowers: number; liTotalFollowers: number; liER: number; ttViews: number; ttInteractions: number; ttNewFollowers: number; ttTotalFollowers: number; ytViews: number; newsletterViews: number; igPostCount: number; liPostCount: number }
   const hit = getCached<Item[]>('overview-history'); if (hit) return hit
-  const [igMonthly, liMonthly, liPosts, ttMonthly, ytMonthly, igPosts, nlEpisodes, igDaily] = await Promise.all([
+  const [igMonthly, liMonthly, liPosts, ttMonthly, ttVideos, ytMonthly, igPosts, nlEpisodes, igDaily] = await Promise.all([
     supabase.from('instagram_monthly').select('year,month,total_views_manual,total_reach_manual,new_followers,total_followers,total_interactions,avg_er').order('year').order('month'),
-    supabase.from('linkedin_monthly').select('year,month,new_followers,total_followers,total_impressions,total_interactions').order('year').order('month'),
+    supabase.from('linkedin_monthly').select('year,month,new_followers,total_followers,total_impressions,total_interactions,avg_er').order('year').order('month'),
     supabase.from('linkedin_posts').select('year,month,impressions,interactions,er_decimal'),
     supabase.from('tiktok_monthly').select('year,month,total_views,total_interactions,new_followers,total_followers').order('year').order('month'),
+    supabase.from('tiktok_videos').select('year,month,views,likes,comments,shares,is_manual'),
     supabase.from('youtube_monthly').select('year,month,shorts_views').order('year').order('month'),
     supabase.from('instagram_posts').select('year,month,type,is_manual,views,impressions,likes,comments,shares,saves,follows'),
     supabase.from('newsletter_episodes').select('year,month,views'),
@@ -350,6 +377,16 @@ export async function getOverviewHistory() {
     if (!igDailyByMonth[dk]) igDailyByMonth[dk] = { views: 0, interactions: 0 }
     igDailyByMonth[dk].views += d.views ?? 0
     igDailyByMonth[dk].interactions += d.interactions ?? 0
+  }
+  // TikTok video sums per month (fallback when no Overview total; manual videos
+  // add on top) — mirrors getTikTokStats/getTikTokHistory so Overview matches.
+  const ttByMonth: Record<string, { csvViews: number; csvInter: number; manViews: number; manInter: number }> = {}
+  for (const v of (ttVideos.data ?? []) as { year: number; month: number; views: number | null; likes: number | null; comments: number | null; shares: number | null; is_manual: boolean | null }[]) {
+    const k = `${v.year}-${v.month}`
+    if (!ttByMonth[k]) ttByMonth[k] = { csvViews: 0, csvInter: 0, manViews: 0, manInter: 0 }
+    const inter = (v.likes ?? 0) + (v.comments ?? 0) + (v.shares ?? 0)
+    if (v.is_manual) { ttByMonth[k].manViews += v.views ?? 0; ttByMonth[k].manInter += inter }
+    else { ttByMonth[k].csvViews += v.views ?? 0; ttByMonth[k].csvInter += inter }
   }
 
   const liByMonth: Record<string, { impressions: number; interactions: number; erSum: number; count: number }> = {}
@@ -383,6 +420,7 @@ export async function getOverviewHistory() {
   // Include months that only have post-level data (CSV loaded, no monthly row yet)
   Object.keys(igByMonth).forEach(k => monthSet.add(k))
   Object.keys(liByMonth).forEach(k => monthSet.add(k))
+  Object.keys(ttByMonth).forEach(k => monthSet.add(k))
 
   const result = Array.from(monthSet).sort().map(key => {
     const [yr, mo] = key.split('-').map(Number)
@@ -392,6 +430,10 @@ export async function getOverviewHistory() {
     const yt = (ytMonthly.data ?? []).find((d: {year:number;month:number}) => d.year === yr && d.month === mo)
     const liM = liByMonth[key] ?? { impressions: 0, interactions: 0, erSum: 0, count: 0 }
     const igM = igByMonth[key] ?? { interactions: 0, impressions: 0, views: 0, count: 0, extViews: 0, extInter: 0 }
+    const ttvb = ttByMonth[key] ?? { csvViews: 0, csvInter: 0, manViews: 0, manInter: 0 }
+    // TikTok: Overview total (or CSV video sum) + manual videos on top.
+    const ttViewsVal = ((tt as Record<string, number>)?.total_views > 0 ? (tt as Record<string, number>).total_views : ttvb.csvViews) + ttvb.manViews
+    const ttInteractionsVal = ((tt as Record<string, number>)?.total_interactions > 0 ? (tt as Record<string, number>).total_interactions : ttvb.csvInter) + ttvb.manInter
     // Prefer stored monthly totals for LinkedIn when post-level data isn't available
     const liImpressions = (li as Record<string, number>)?.total_impressions > 0 ? (li as Record<string, number>).total_impressions : liM.impressions
     const liInteractions = (li as Record<string, number>)?.total_interactions > 0 ? (li as Record<string, number>).total_interactions : liM.interactions
@@ -413,9 +455,9 @@ export async function getOverviewHistory() {
       liInteractions,
       liNewFollowers: li?.new_followers ?? 0,
       liTotalFollowers: li?.total_followers ?? 0,
-      liER: liM.count > 0 ? (liM.erSum / liM.count) * 100 : 0,
-      ttViews: tt?.total_views ?? 0,
-      ttInteractions: tt?.total_interactions ?? 0,
+      liER: (li as Record<string, number | null>)?.avg_er != null ? (li as Record<string, number>).avg_er : (liM.count > 0 ? (liM.erSum / liM.count) * 100 : 0),
+      ttViews: ttViewsVal,
+      ttInteractions: ttInteractionsVal,
       ttNewFollowers: tt?.new_followers ?? 0,
       ttTotalFollowers: tt?.total_followers ?? 0,
       ytViews: yt?.shorts_views ?? 0,

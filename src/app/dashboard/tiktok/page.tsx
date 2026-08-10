@@ -4,12 +4,12 @@ import { MonthSelector } from '@/components/ui/month-selector'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   getTikTokStats, getTikTokHistory, deleteTikTokVideo, upsertTikTokMonthly,
-  addTikTokVideoManual, getYouTubeHistory,
+  addTikTokVideoManual, getYouTubeHistory, getTikTokVideosByDateRange, getTikTokLatestVideoDate,
 } from '@/lib/queries'
-import { formatNumber, monthLabel, shortMonthLabel, movingAvg, pctChange, formatPercent } from '@/lib/utils'
+import { formatNumber, monthLabel, shortMonthLabel, movingAvg, pctChange, formatPercent, toMonday, addDaysISO, weekRangeLabel } from '@/lib/utils'
 import { useMesParam } from '@/hooks/useMesParam'
-import type { TikTokStats } from '@/lib/types'
-import { Trash2, ExternalLink, Plus, ChevronUp, ChevronDown, Upload, RefreshCw } from 'lucide-react'
+import type { TikTokStats, TikTokVideo } from '@/lib/types'
+import { Trash2, ExternalLink, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Upload, RefreshCw } from 'lucide-react'
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, LabelList, AreaChart, Area,
@@ -42,6 +42,9 @@ type SortDir = 'asc' | 'desc'
 export default function TikTokPage() {
   const { year, month, setYear, setMonth } = useMesParam()
   const [stats, setStats] = useState<TikTokStats | null>(null)
+  const [weekMonday, setWeekMonday] = useState<string | null>(null)
+  const [weekVideos, setWeekVideos] = useState<TikTokVideo[]>([])
+  const [weekLoading, setWeekLoading] = useState(false)
   const [history, setHistory] = useState<HistoryPoint[]>([])
   const [ytHistory, setYtHistory] = useState<YTHistoryPoint[]>([])
   const [loading, setLoading] = useState(true)
@@ -73,6 +76,20 @@ export default function TikTokPage() {
   }, [year, month])
 
   useEffect(() => { load() }, [load])
+
+  // Weekly review: anchor to the latest video's week, then navigate.
+  useEffect(() => {
+    getTikTokLatestVideoDate().then(d => { if (d) setWeekMonday(toMonday(d)) }).catch(() => {})
+  }, [])
+  useEffect(() => {
+    if (!weekMonday) return
+    setWeekLoading(true)
+    getTikTokVideosByDateRange(weekMonday, addDaysISO(weekMonday, 6))
+      .then(setWeekVideos).catch(() => setWeekVideos([])).finally(() => setWeekLoading(false))
+  }, [weekMonday])
+  const weekViewsSum = weekVideos.reduce((a, v) => a + (v.views ?? 0), 0)
+  const weekInterSum = weekVideos.reduce((a, v) => a + (v.likes ?? 0) + (v.comments ?? 0) + (v.shares ?? 0), 0)
+  const weekER = weekViewsSum > 0 ? (weekInterSum / weekViewsSum) * 100 : 0
   useEffect(() => { setSelected(new Set()) }, [year, month])
 
   async function saveVideo() {
@@ -423,6 +440,67 @@ export default function TikTokPage() {
               </div>
             </Card>
           )}
+
+          {/* Repaso semanal */}
+          <Card className="mb-6">
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <div>
+                <CardTitle>Repaso semanal</CardTitle>
+                <p className="text-xs text-gray-400 mt-0.5">Videos publicados en la semana seleccionada.</p>
+              </div>
+              {weekMonday && (
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setWeekMonday(m => m ? addDaysISO(m, -7) : m)}
+                    className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors"><ChevronLeft size={15} /></button>
+                  <span className="text-sm font-medium text-gray-700 whitespace-nowrap">{weekRangeLabel(weekMonday)}</span>
+                  <button onClick={() => setWeekMonday(m => m ? addDaysISO(m, 7) : m)}
+                    className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500 hover:bg-gray-200 transition-colors"><ChevronRight size={15} /></button>
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              {[
+                { label: 'Videos', value: String(weekVideos.length) },
+                { label: 'Views', value: formatNumber(weekViewsSum) },
+                { label: 'ER%', value: weekER > 0 ? formatPercent(weekER) : '—' },
+              ].map(s => (
+                <div key={s.label} className="bg-gray-50 rounded-xl border border-gray-100 p-3">
+                  <div className="text-[11px] text-gray-500 uppercase tracking-wide mb-1">{s.label}</div>
+                  <div className="text-xl font-bold text-gray-900">{s.value}</div>
+                </div>
+              ))}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 text-gray-400">
+                    <th className="text-left py-2 px-2 text-xs font-medium">Video</th>
+                    <th className="text-left py-2 px-2 text-xs font-medium">Fecha</th>
+                    <th className="text-right py-2 px-2 text-xs font-medium">Views</th>
+                    <th className="text-right py-2 px-2 text-xs font-medium">Interacc.</th>
+                    <th className="py-2 px-2 w-6" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {weekLoading ? (
+                    <tr><td colSpan={5} className="py-6 text-center text-gray-400 text-xs">Cargando…</td></tr>
+                  ) : weekVideos.length === 0 ? (
+                    <tr><td colSpan={5} className="py-6 text-center text-gray-400 text-xs">No hay videos publicados en esta semana.</td></tr>
+                  ) : weekVideos.map(v => (
+                    <tr key={v.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
+                      <td className="py-2 px-2 max-w-[320px] truncate text-gray-700">{v.title || '(sin título)'}</td>
+                      <td className="py-2 px-2 text-gray-500 whitespace-nowrap">{v.video_date ?? '—'}</td>
+                      <td className="py-2 px-2 text-right font-medium">{formatNumber(v.views)}</td>
+                      <td className="py-2 px-2 text-right text-gray-600">{formatNumber((v.likes ?? 0) + (v.comments ?? 0) + (v.shares ?? 0))}</td>
+                      <td className="py-2 px-2 text-right">
+                        {v.permalink ? <a href={v.permalink} target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-blue-600 inline-flex"><ExternalLink size={13} /></a> : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
 
           <Card className="mb-10">
             <div className="flex items-center justify-between mb-4">

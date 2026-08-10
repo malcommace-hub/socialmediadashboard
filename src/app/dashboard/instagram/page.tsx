@@ -10,7 +10,7 @@ import {
   updateInstagramPostCollab, getInfluencerNames,
   getObjectives, upsertObjective, getInstagramPostsByDateRange, getInstagramLatestPostDate,
 } from '@/lib/queries'
-import { formatNumber, formatPercent, monthLabel, shortMonthLabel, movingAvg, pctChange, getQuarter, MONTH_NAMES } from '@/lib/utils'
+import { formatNumber, formatPercent, monthLabel, shortMonthLabel, movingAvg, pctChange, getQuarter, toMonday, addDaysISO, weekRangeLabel } from '@/lib/utils'
 import { useMesParam } from '@/hooks/useMesParam'
 import type { InstagramStats, InstagramPost } from '@/lib/types'
 import { Trash2, ExternalLink, Plus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, PencilLine, Upload, RefreshCw, Star, Users } from 'lucide-react'
@@ -77,25 +77,6 @@ const emptyNewPost = {
   description: '', post_date: '',
   views: '', likes: '', comments: '', shares: '', saves: '',
   permalink: '', collab_account: '',
-}
-
-// ── Week helpers (ISO 'YYYY-MM-DD', week = Monday–Sunday) ──
-function toMonday(dateStr: string): string {
-  const d = new Date(dateStr + 'T12:00:00Z')
-  const day = d.getUTCDay() // 0=Sun
-  d.setUTCDate(d.getUTCDate() - (day === 0 ? 6 : day - 1))
-  return d.toISOString().slice(0, 10)
-}
-function addDaysISO(dateStr: string, days: number): string {
-  const d = new Date(dateStr + 'T12:00:00Z')
-  d.setUTCDate(d.getUTCDate() + days)
-  return d.toISOString().slice(0, 10)
-}
-function weekRangeLabel(mondayStr: string): string {
-  const s = new Date(mondayStr + 'T12:00:00Z')
-  const e = new Date(addDaysISO(mondayStr, 6) + 'T12:00:00Z')
-  const fmt = (dt: Date) => `${dt.getUTCDate()} ${MONTH_NAMES[dt.getUTCMonth()].slice(0, 3)}`
-  return `${fmt(s)} – ${fmt(e)} ${e.getUTCFullYear()}`
 }
 
 export default function InstagramPage() {
