@@ -106,45 +106,44 @@ export function parseInstagramCSV(text: string): RawInstagramRow[] {
   }).filter(r => r.permalink || r.description)
 }
 
-// ─── Instagram "Content interactions" daily export (Meta Business Suite) ─────
-// A daily time-series CSV: Date + an interactions column. Meta's total is
-// broader than the per-post content export's likes+comments+shares+saves, so
-// this lets us use Meta's own number. Sums the interactions column and detects
-// the month from the dates.
-export interface RawInstagramInteractions {
-  total_interactions: number
+// ─── Instagram daily metric export (Meta Business Suite) ────────────────────
+// Meta exports its daily charts ("Visualizaciones"/Views, "Content
+// interactions") as a UTF-16 CSV with a "sep=," directive, a title line, a
+// header where the value column is named "Primary", and rows like
+// "2026-07-01T00:00:00","3006". These daily totals are the authoritative
+// monthly number (per-post content export views are lifetime, so they drift).
+// We store the per-day values so weekly/partial exports accumulate by date
+// without overlap. Scanning line-by-line sidesteps the preamble/column naming.
+// NOTE: the caller must decode the file text first (these exports are UTF-16).
+export interface RawInstagramDaily {
+  rows: { date: string; value: number }[]  // date = 'YYYY-MM-DD'
+  total: number
   days: number
   year: number | null
   month: number | null
 }
 
-// Robust to Meta's quirks: a "sep=," directive line, a title line, a header
-// row where the value column is named "Primary", and rows shaped like
-// "2026-07-01T00:00:00","3006". We scan line by line for a date + numeric
-// value, which sidesteps the preamble and column naming entirely.
-// NOTE: the caller must decode the file text first (this export is UTF-16).
-export function parseInstagramInteractionsCSV(text: string): RawInstagramInteractions {
+export function parseInstagramDailyCSV(text: string): RawInstagramDaily {
   const clean = text.replace(/^﻿/, '')
   const lines = clean.split(/\r?\n/)
+  const rows: { date: string; value: number }[] = []
   let total = 0
-  let days = 0
   const monthCount: Record<string, number> = {}
   for (const line of lines) {
-    const m = line.match(/(\d{4})-(\d{2})-\d{2}[^,]*,\s*"?\s*([\d.,]+)\s*"?/)
+    const m = line.match(/(\d{4})-(\d{2})-(\d{2})[^,]*,\s*"?\s*([\d.,]+)\s*"?/)
     if (!m) continue
-    const y = parseInt(m[1], 10)
-    const mo = parseInt(m[2], 10)
-    const val = Number(m[3].replace(/[^0-9.-]/g, '')) || 0
+    const date = `${m[1]}-${m[2]}-${m[3]}`
+    const val = Number(m[4].replace(/[^0-9.-]/g, '')) || 0
+    rows.push({ date, value: Math.round(val) })
     total += val
-    days++
-    const ym = `${y}-${mo}`
+    const ym = `${parseInt(m[1], 10)}-${parseInt(m[2], 10)}`
     monthCount[ym] = (monthCount[ym] ?? 0) + 1
   }
-  if (days === 0) throw new Error('No se encontraron filas de interacciones (fecha + valor). Verificá que sea el export de "Content interactions".')
+  if (rows.length === 0) throw new Error('No se encontraron filas diarias (fecha + valor). Verificá que sea el export diario de Meta.')
   let best: string | null = null, bestN = 0
   for (const [k, n] of Object.entries(monthCount)) if (n > bestN) { best = k; bestN = n }
   const [y, m] = best ? best.split('-').map(Number) : [null, null]
-  return { total_interactions: Math.round(total), days, year: y, month: m }
+  return { rows, total: Math.round(total), days: rows.length, year: y, month: m }
 }
 
 // ─── LinkedIn XLS (LinkedIn Analytics → Exportar) ─────────────────────────

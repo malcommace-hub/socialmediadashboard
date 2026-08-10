@@ -16,6 +16,15 @@ create table if not exists instagram_monthly (
   unique(year, month)
 );
 
+-- Daily metrics from Meta's "Visualizaciones" (Views) and "Content
+-- interactions" exports. Stored per-day so weekly/partial uploads accumulate
+-- by date; the monthly totals are summed from these when present.
+create table if not exists instagram_daily (
+  date date primary key,
+  views int,
+  interactions int
+);
+
 create table if not exists instagram_posts (
   id uuid primary key default gen_random_uuid(),
   year int not null,
@@ -186,6 +195,7 @@ create table if not exists objectives (
 
 alter table instagram_monthly enable row level security;
 alter table instagram_posts enable row level security;
+alter table instagram_daily enable row level security;
 alter table linkedin_monthly enable row level security;
 alter table linkedin_posts enable row level security;
 alter table tiktok_monthly enable row level security;
@@ -201,6 +211,7 @@ alter table objectives enable row level security;
 -- For a single-user internal tool, we allow all from anon key
 create policy "allow all" on instagram_monthly for all using (true) with check (true);
 create policy "allow all" on instagram_posts for all using (true) with check (true);
+create policy "allow all" on instagram_daily for all using (true) with check (true);
 create policy "allow all" on linkedin_monthly for all using (true) with check (true);
 create policy "allow all" on linkedin_posts for all using (true) with check (true);
 create policy "allow all" on tiktok_monthly for all using (true) with check (true);

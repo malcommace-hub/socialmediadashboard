@@ -3,9 +3,9 @@ import { useState, useEffect } from 'react'
 import { Card, CardHeader, CardTitle } from '@/components/ui/card'
 import { MonthSelector } from '@/components/ui/month-selector'
 import { setStoredMonth } from '@/lib/monthStore'
-import { parseInstagramCSV, parseInstagramInteractionsCSV, parseLinkedInCSV, parseLinkedInXLS, parseLinkedInXLSWithDebug, parseTikTokCSV, parseTikTokOverviewCSV, parseTikTokFollowerHistoryCSV, type LinkedInDebugInfo } from '@/lib/parsers'
+import { parseInstagramCSV, parseInstagramDailyCSV, parseLinkedInCSV, parseLinkedInXLS, parseLinkedInXLSWithDebug, parseTikTokCSV, parseTikTokOverviewCSV, parseTikTokFollowerHistoryCSV, type LinkedInDebugInfo } from '@/lib/parsers'
 import {
-  upsertInstagramPosts, clearInstagramMonthlyMetrics, upsertInstagramInteractions, upsertInstagramMonthly, getInstagramFollowers, upsertLinkedInPosts, upsertTikTokVideos, upsertTikTokMonthly,
+  upsertInstagramPosts, clearInstagramMonthlyMetrics, upsertInstagramDailyViews, upsertInstagramDailyInteractions, upsertInstagramMonthly, getInstagramFollowers, upsertLinkedInPosts, upsertTikTokVideos, upsertTikTokMonthly,
   getYouTubeMonthly, upsertYouTubeMonthly,
   getNewsletterData, upsertNewsletterMonthly, addNewsletterEpisode, deleteNewsletterEpisode,
   getWebData, upsertWebMonthly, upsertWebUtmSource,
@@ -58,6 +58,7 @@ export default function UploadPage() {
   const [month, setMonth] = useState(cm)
 
   const [ig, setIg] = useState<UploadState>(emptyState)
+  const [igViews, setIgViews] = useState<UploadState>(emptyState)
   const [igInt, setIgInt] = useState<UploadState>(emptyState)
   const [li, setLi] = useState<UploadState>(emptyState)
   const [tt, setTt] = useState<UploadState>(emptyState)
@@ -238,33 +239,63 @@ export default function UploadPage() {
     }
   }
 
-  // ─── Instagram interactions (Meta "Content interactions" daily export) ──
+  // ─── Instagram daily exports (Meta "Visualizaciones" / "Content interactions") ──
+  // Both are UTF-16 daily CSVs; stored per-day so weekly/partial ranges accumulate.
+  async function decodeUpload(file: File): Promise<string> {
+    const buf = await file.arrayBuffer()
+    const b = new Uint8Array(buf)
+    return (b[0] === 0xFF && b[1] === 0xFE) ? new TextDecoder('utf-16le').decode(buf)
+      : (b[0] === 0xFE && b[1] === 0xFF) ? new TextDecoder('utf-16be').decode(buf)
+      : new TextDecoder('utf-8').decode(buf)
+  }
+
+  async function handleInstagramViewsFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setIgViews({ ...emptyState, status: 'parsing' })
+    try {
+      const parsed = parseInstagramDailyCSV(await decodeUpload(file))
+      if (parsed.year && parsed.month) { setYear(parsed.year); setMonth(parsed.month) }
+      setIgViews({ status: 'preview', rowCount: parsed.days, preview: [parsed] })
+    } catch (err) {
+      setIgViews({ ...emptyState, status: 'error', error: (err as { message?: string })?.message ?? 'No se pudo parsear el export de Views.' })
+    }
+    e.target.value = ''
+  }
+  async function confirmInstagramViews() {
+    setIgViews(s => ({ ...s, status: 'uploading' }))
+    try {
+      const p = igViews.preview[0] as { rows: { date: string; value: number }[]; year: number | null; month: number | null }
+      const { error } = await upsertInstagramDailyViews(p.rows.map(r => ({ date: r.date, views: r.value })))
+      if (error) throw error
+      if (p.year && p.month) setStoredMonth(p.year, p.month)
+      clearCache()
+      setIgViews(s => ({ ...s, status: 'done' }))
+    } catch (err) {
+      setIgViews(s => ({ ...s, status: 'error', error: (err as { message?: string })?.message ?? String(err) }))
+    }
+  }
+
   async function handleInstagramInteractionsFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
     setIgInt({ ...emptyState, status: 'parsing' })
     try {
-      // Meta exports this file as UTF-16; decode by BOM (falls back to UTF-8).
-      const buf = await file.arrayBuffer()
-      const b = new Uint8Array(buf)
-      const text = (b[0] === 0xFF && b[1] === 0xFE) ? new TextDecoder('utf-16le').decode(buf)
-        : (b[0] === 0xFE && b[1] === 0xFF) ? new TextDecoder('utf-16be').decode(buf)
-        : new TextDecoder('utf-8').decode(buf)
-      const parsed = parseInstagramInteractionsCSV(text)
+      const parsed = parseInstagramDailyCSV(await decodeUpload(file))
       if (parsed.year && parsed.month) { setYear(parsed.year); setMonth(parsed.month) }
-      setIgInt({ status: 'preview', rowCount: 1, preview: [parsed] })
+      setIgInt({ status: 'preview', rowCount: parsed.days, preview: [parsed] })
     } catch (err) {
       setIgInt({ ...emptyState, status: 'error', error: (err as { message?: string })?.message ?? 'No se pudo parsear el export de interacciones.' })
     }
     e.target.value = ''
   }
-
   async function confirmInstagramInteractions() {
     setIgInt(s => ({ ...s, status: 'uploading' }))
     try {
-      const p = igInt.preview[0] as { total_interactions: number }
-      const { error } = await upsertInstagramInteractions(year, month, p.total_interactions)
+      const p = igInt.preview[0] as { rows: { date: string; value: number }[]; year: number | null; month: number | null }
+      const { error } = await upsertInstagramDailyInteractions(p.rows.map(r => ({ date: r.date, interactions: r.value })))
       if (error) throw error
+      if (p.year && p.month) setStoredMonth(p.year, p.month)
       clearCache()
       setIgInt(s => ({ ...s, status: 'done' }))
     } catch (err) {
@@ -450,17 +481,30 @@ export default function UploadPage() {
           previewColumns={['type', 'description', 'views', 'impressions', 'likes']}
         />
 
-        {/* Instagram interactions (Meta) */}
+        {/* Instagram Views (Meta) — daily */}
+        <UploadCard
+          icon={<Camera size={18} />}
+          title="Instagram — Views (Meta)"
+          subtitle='Meta Business Suite → Insights → gráfico "Visualizaciones" → Export CSV. Cualquier rango (semana o mes); se acumula por día.'
+          accept=".csv"
+          state={igViews}
+          onFile={handleInstagramViewsFile}
+          onConfirm={confirmInstagramViews}
+          onReset={() => setIgViews(emptyState)}
+          previewColumns={['total', 'days']}
+        />
+
+        {/* Instagram interactions (Meta) — daily */}
         <UploadCard
           icon={<Camera size={18} />}
           title="Instagram — Interacciones (Meta)"
-          subtitle='Meta Business Suite → "Content interactions" → Export CSV. Reemplaza el total de interacciones del mes por el de Meta.'
+          subtitle='Meta Business Suite → Insights → gráfico "Content interactions" → Export CSV. Cualquier rango; se acumula por día.'
           accept=".csv"
           state={igInt}
           onFile={handleInstagramInteractionsFile}
           onConfirm={confirmInstagramInteractions}
           onReset={() => setIgInt(emptyState)}
-          previewColumns={['total_interactions', 'days']}
+          previewColumns={['total', 'days']}
         />
 
         {/* LinkedIn */}
